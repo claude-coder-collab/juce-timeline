@@ -94,14 +94,14 @@ Rendering:
 
 Layout:
 - Track headers on the left (name, colour; contents customisable by a component factory lambda for mute/solo/arm buttons). Header components exist only for visible tracks, kept in a pool and rebound to a different `TrackId` as tracks scroll in and out; the factory is called only when the pool needs another component, and a rebind callback lets custom contents update for the new track. Time ruler on top. Clip area fills the rest.
-- Track heights per track, with a global default. Vertical scroll for tracks; horizontal scroll for time.
+- Track heights per track, with a global default. Keyboard height changes step through a look-and-feel list of heights (default 24, 32, 48, 72, 112, 176, 272 px); a track between steps moves to the next step in that direction. Vertical scroll for tracks; horizontal scroll for time.
 - Playhead drawn from `setPlayhead(samples)`; the view never plays audio. Only the old and new playhead strips are repainted. Optional follow mode (page or smooth scroll).
 - Optional loop range and markers drawn on the ruler.
 
 Zoom and scroll:
 - Zoom is samples-per-pixel (`double`; below 1 at deep zoom).
-- Mouse: Ctrl/Cmd + wheel zooms around the pointer; plain wheel scrolls vertically; Shift + wheel scrolls horizontally.
-- Trackpad: horizontal deltas scroll horizontally directly; pinch (`mouseMagnify`) zooms around the pointer.
+- **Edit cursor**: the start of the time selection if there is one, otherwise the playhead. It is the anchor for zooms that are not anchored at the pointer: the anchor's screen position stays fixed, or if it is off screen, the view centres on it.
+- Bindings follow Pro Tools defaults (see Input bindings). Trackpad horizontal deltas scroll horizontally directly; pinch (`mouseMagnify`) zooms around the pointer.
 - API: `setVisibleRange`, `zoomToFit`, `zoomToSelection`.
 - Limits: from 1/16 samples per pixel (16 px per sample) up to the whole timeline fitting in the view. For zoom-out purposes the timeline is at least 10 seconds long, so an empty timeline still has a range.
 
@@ -117,7 +117,7 @@ Clips:
 Waveform zoom:
 - Each view has a waveform vertical scale, `setWaveformScale(factor)`, from 0.25× to 64× (default 1×), passed to the waveform drawing as its display scale. It affects drawing only: no peak data is rebuilt and the model is not told.
 - A track may override it with `setTrackWaveformScale(TrackId, std::optional<double>)`; empty means the view's scale.
-- Ctrl/Cmd + Alt/Option + wheel over the clip area scales by steps of 2^(1/4); over a track's clips with Shift added, it scales only that track. Ctrl/Cmd + Alt/Option + Up/Down does the same for the whole view. Each scale change notifies a callback, so an application can persist it.
+- Mouse and keyboard changes (see Input bindings) scale the whole view in steps of 2^(1/4); per-track scale is API only. Each scale change notifies a callback, so an application can persist it.
 
 Level of detail:
 - Each clip is drawn at a tier chosen by its on-screen width (thresholds from the look and feel):
@@ -132,7 +132,7 @@ Level of detail:
 Selection:
 - Clips (multi-select by click, Shift, Ctrl/Cmd, rubber-band), tracks (by header), and a time range (drag on the ruler). Selection is view state, reported through callbacks and held by id.
 - It survives model changes. On a clips-changed or tracks-changed notification the affected selected ids are re-queried, and on a full reset all selected ids are; ids whose info is empty are dropped.
-- Ctrl/Cmd+A selects all clips via `clipsInRange(track, 0, length())` on every track. This is the only full-size query.
+- Select all (see Input bindings) selects all clips via `clipsInRange(track, 0, length())` on every track. This is the only full-size query.
 
 Keyboard:
 - The keyboard cursor is on a clip, on a track, or nowhere. Arrows move the cursor and select what it lands on, replacing the selection; Shift+arrow adds to it. The view scrolls to keep the cursor visible.
@@ -140,7 +140,28 @@ Keyboard:
 - On a clip: Left/Right move to the previous/next clip on the same track by start position, ties broken by draw order; at the first or last clip the cursor stays. Up/Down move to the adjacent track (never skipping one): to its clip under the current clip's start, else its nearest visible clip by start, else the track itself. Escape moves the cursor from a clip to its track.
 - On a track: Up/Down move to the adjacent track; Right or Enter moves to the track's first visible clip, if any.
 - Home/End jump the view to the timeline ends.
-- Zoom in on the characters `+` or `=`, zoom out on `-`, matched by typed character (`KeyPress::getTextCharacter`) so they work on any layout, plus the numpad `+`/`-` by key code.
+- Zoom and track-height keys are listed under Input bindings.
+
+Input bindings:
+- Pro Tools defaults. Pro Tools maps Mac Command → Windows Ctrl, Option → Alt, Control → Start (Windows key); Windows and Linux here follow that, except where the Start key would collide with the OS.
+- Letter and bracket keys are matched by typed character (`KeyPress::getTextCharacter`), so they work on any layout. Single-letter keys act only while the timeline has keyboard focus.
+- Wheel bindings use whichever wheel delta is non-zero, since macOS turns Shift + wheel into a horizontal delta.
+
+| Action | macOS | Windows / Linux |
+|---|---|---|
+| Scroll tracks vertically | wheel | wheel |
+| Scroll time horizontally | Shift + wheel | Shift + wheel |
+| Horizontal zoom, anchored at the edit cursor | Option + wheel | Alt + wheel |
+| Horizontal zoom, anchored at the pointer | Command + wheel | Ctrl + wheel |
+| Waveform height zoom | Option + Shift + wheel | Alt + Shift + wheel |
+| Horizontal zoom in / out, anchored at the edit cursor | T / R, Command + ] / [ | T / R, Ctrl + ] / [ |
+| Waveform height up / down | Command + Option + ] / [ | Ctrl + Alt + ] / [ |
+| Track height up / down | Control + Up / Down | Ctrl + Up / Down |
+| Select all clips | Command + A | Ctrl + A |
+
+- Track height changes apply to the selected tracks, else the keyboard cursor's track, else nothing.
+- Each wheel notch (or equivalent trackpad delta) zooms horizontally by a factor of 2^(1/2); each key press by 2.
+- macOS assigns Control + Up/Down to Mission Control and App Exposé by default, so the app never receives them unless the user disables those shortcuts (as Pro Tools users usually do). The README says so.
 
 Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. Light and dark.
 

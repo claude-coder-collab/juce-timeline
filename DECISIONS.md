@@ -37,3 +37,9 @@
 ## 2026-10-29 — Waveform zoom
 
 - **Waveform zoom is a view-level display scale with per-track overrides.** It is separate from clip gain (model data) and never rebuilds peaks; overrides cover the common case of one quiet track.
+
+## 2026-10-29 — Pro Tools input bindings
+
+- **Mouse and keyboard bindings match Pro Tools defaults.** Target users know them. The `+`/`-` zoom keys and the earlier waveform-zoom modifiers are dropped; per-track waveform zoom is API only.
+- **Windows/Linux track height is Ctrl + Up/Down, not Start + Up/Down.** Pro Tools' Start-key mapping collides with Windows window snapping; Ctrl is free because Command + Up/Down is unused.
+- **Zoom anchor "edit cursor" is the time-selection start, else the playhead.** The view has no separate insertion point.
