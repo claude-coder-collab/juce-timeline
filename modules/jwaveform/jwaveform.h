@@ -17,5 +17,11 @@ END_JUCE_MODULE_DECLARATION
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "core/jwaveform_PeakBuilder.h"
+#include "core/jwaveform_PeakCache.h"
+#include "core/jwaveform_PeakColumns.h"
+#include "core/jwaveform_PeakData.h"
 #include "core/jwaveform_PeakLevels.h"
 #include "core/jwaveform_SampleRange.h"
+#include "view/jwaveform_WaveformDrawing.h"
+#include "view/jwaveform_WaveformView.h"

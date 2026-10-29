@@ -5,7 +5,18 @@ Two [JUCE 8](https://juce.com) modules for showing an audio timeline: tracks of 
 - **jwaveform**: waveform peaks and drawing. It works without a timeline.
 - **jtimeline**: the timeline view. It depends on jwaveform.
 
-Status: milestone 1 (skeleton). Only the core time-mapping types exist so far; the view arrives in later milestones (see `SPEC.md`).
+Status: milestone 2. jwaveform is usable: progressive peak building, a shared memory-bounded cache and waveform drawing. The timeline view arrives in later milestones (see `SPEC.md`).
+
+```cpp
+auto cache = std::make_shared<jwaveform::PeakCache>();   // share between views
+jwaveform::WaveformView view;
+view.setPeakCache(cache);
+view.setSource({ .key = path + modificationTime,
+                 .createReader = [&formats, path] { return std::unique_ptr<juce::AudioFormatReader>{ formats.createReaderFor(juce::File{ path }) }; } });
+view.setVisibleRange(startSample, endSample);            // empty range = whole source
+```
+
+The reader factory runs on background threads and must return a new reader per call. For custom drawing, use `jwaveform::drawWaveform` with a `PeakHandle` from `PeakCache::request`.
 
 ## Using it
 
@@ -27,4 +38,4 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-`python3 tools/check.py` runs every local check: formatting, the tests, ASan/UBSan, TSan and clang-tidy.
+`demo/waveform` and `demo/timeline` are the demo apps. `python3 tools/check.py` runs every local check: formatting, the tests, ASan/UBSan, TSan and clang-tidy.

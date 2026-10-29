@@ -33,7 +33,13 @@ if(JTIMELINE_CLANG_TIDY)
 endif()
 
 add_library(jwaveform_static STATIC
-    modules/jwaveform/core/jwaveform_PeakLevels.cpp)
+    modules/jwaveform/core/jwaveform_PeakBuilder.cpp
+    modules/jwaveform/core/jwaveform_PeakCache.cpp
+    modules/jwaveform/core/jwaveform_PeakColumns.cpp
+    modules/jwaveform/core/jwaveform_PeakData.cpp
+    modules/jwaveform/core/jwaveform_PeakLevels.cpp
+    modules/jwaveform/view/jwaveform_WaveformDrawing.cpp
+    modules/jwaveform/view/jwaveform_WaveformView.cpp)
 add_library(jtimeline::jwaveform ALIAS jwaveform_static)
 target_include_directories(jwaveform_static PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/modules")
 target_link_libraries(jwaveform_static PUBLIC jtimeline::juce)

@@ -71,3 +71,14 @@
 - **`SamplePosition` and `SampleRange` live in jwaveform.** jtimeline depends on jwaveform anyway, and one definition avoids conversions between the modules.
 - **Build mirrors juce-grid.** Same presets, sanitizer and clang-tidy options, and `tools/check.py`.
 - **Wheel bindings in `core/`, one notch per notched-wheel event.** Per-notch delta sizes differ about sixfold between platforms, so counting events gives the same zoom per notch everywhere. Trackpad deltas are proportional instead. The milestone 1 demo had ignored the spec's bindings (plain wheel scrolled time); it now uses the shared logic.
+
+## 2026-10-29 — Milestone 2
+
+- **`PeakCache` is used from the message thread.** The spec said thread-safe; all GUI code is on the message thread anyway, and confining it there keeps listener callbacks and timers simple. Builds still run on the pool and only touch their own entry.
+- **Handles pin entries.** Peaks held by a handle are not evicted, so the cache's memory is actually freed when it evicts; the bound may be exceeded while everything is in use.
+- **Cancelled builds resume.** `PeakData` keeps its partial block, so a new reader continues from the appended frame count instead of starting again.
+- **Failed entries are dropped once unused.** A later request retries, which covers a file that reappears.
+- **Notifications by polling timer.** Builders set a flag; a 30 ms timer on the message thread delivers callbacks, which rate-limits per key and avoids posting a message per block.
+- **Outward rounding of peaks.** Rounding min down and max up never understates the envelope after `int16` quantisation.
+- **`append` takes a span of channel pointers.** Callers pass arrays or vectors without raw pointer-to-pointer decay.
+- **Separate waveform demo.** jwaveform is usable without the timeline, so it gets its own app; the timeline demo moved to `demo/timeline/`.
