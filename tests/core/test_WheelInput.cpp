@@ -54,11 +54,11 @@ TEST_CASE("Command + wheel zooms at the pointer", "[wheel]")
     CHECK(smooth.zoomAtPointerSteps == Approx(-2.0));
 }
 
-TEST_CASE("Alt + Shift + wheel changes waveform height with either delta", "[wheel]")
+TEST_CASE("Alt + Shift + wheel up makes waveforms smaller, with either delta", "[wheel]")
 {
     const WheelModifiers altShift{ .shift = true, .alt = true };
-    CHECK(wheel::actionFor(altShift, notchUp) == WheelAction{ .waveformZoomSteps = 1.0 });
-    CHECK(wheel::actionFor(altShift, { .deltaX = -0.039, .deltaY = 0.0, .isSmooth = false }) == WheelAction{ .waveformZoomSteps = -1.0 });
+    CHECK(wheel::actionFor(altShift, notchUp) == WheelAction{ .waveformZoomSteps = -1.0 });
+    CHECK(wheel::actionFor(altShift, { .deltaX = -0.039, .deltaY = 0.0, .isSmooth = false }) == WheelAction{ .waveformZoomSteps = 1.0 });
 }
 
 TEST_CASE("Unbound modifier combinations do nothing", "[wheel]")

@@ -56,17 +56,19 @@ Multiple views of one model are supported (e.g. an overview strip and a main vie
 ## Waveforms (jwaveform)
 
 Data:
-- `PeakData`: a multi-resolution min/max pyramid for one audio source, with the source's sample rate, length and channel count. Level 0 is one min/max pair per N samples (default 64) per channel; each higher level halves resolution. Values are `int16` normalised to ±1, so an hour of 48 kHz stereo is about 43 MB including the pyramid (level 0 about 22 MB).
+- `PeakData`: a multi-resolution min/max pyramid for one audio source, with the source's sample rate, length and channel count. Level 0 is one min/max pair per N samples (default 64) per channel; each higher level halves resolution. Values are `int16` normalised to ±1 (32767 = 1), rounded outwards (min down, max up) so the envelope is never understated; samples beyond ±1 are clamped and NaN samples ignored (a block with no other values stores 0). An hour of 48 kHz stereo is about 43 MB including the pyramid (level 0 about 22 MB).
+- Writing: one writer calls `append(span of channel pointers, frames)` and finally `complete()`, which writes the partial last block and the remaining higher-level pairs. `complete()` is also used when a source turns out shorter than its stated length. Frames past the stated length are ignored. The writer can resume later from `getFramesAppended()`.
 - Storage is chunked in fixed-size blocks that never reallocate once written. Each level has its own atomically published count of valid pairs (release on write, acquire on read), so a reader can draw a partially built `PeakData` while the builder appends. Higher levels are filled as the pairs below them complete; a reader reads each level only up to that level's count, and draws the remainder of the range from the coarsest level that covers it (at worst level 0).
 - `PeakData` is shared as `std::shared_ptr<const PeakData>` (the builder holds the only mutable access). Eviction drops the cache's reference; anything drawing keeps its own until done.
 
 Building:
-- `PeakBuilder`: builds `PeakData` from an `AudioFormatReader` on a background thread, progressively, so partial results can be drawn while analysis continues.
-- Builds run on a thread pool owned by the cache (default 2 threads, configurable). A build is cancelled when no handle requests its key any more; finished or partial results stay cached.
+- `PeakBuilder`: builds `PeakData` from an `AudioFormatReader` on a background thread, progressively (blocks of 65536 frames, published after each), so partial results can be drawn while analysis continues. It resumes from the data's appended frame count, checks a cancel flag before each block, and reports `complete`, `cancelled` or `readError`; after a read error the data keeps what was read and is not complete.
+- Builds run on a thread pool owned by the cache (default 2 threads, configurable). A build is cancelled when no handle requests its key any more; finished or partial results stay cached, and a cancelled build resumes where it stopped (with a new reader) when the key is requested again.
 
 Cache:
-- `PeakCache`: shared, keyed by a source key supplied by the model (e.g. file path plus modification time). One build per key however many clips use it. Thread-safe.
-- Memory-bounded in bytes (default 256 MB, configurable) with LRU eviction. A key with a build in progress is not evicted.
+- `PeakCache`: shared, keyed by a source key supplied by the model (e.g. file path plus modification time). One build per key however many clips use it. Its methods are called on the message thread (as all GUI code is); only builds run elsewhere.
+- `request(WaveformSource, onChange)` returns a move-only `PeakHandle`. While any handle for a key exists, the build continues and the peaks are not evicted. The handle gives the possibly partial `PeakData` (empty until a build has opened the source) and a state: `none`, `loading`, `ready`, `cannotOpen` (the factory returned null or threw) or `readError`. `onChange` is called on the message thread when peaks grow or the state changes, at most once per key per 30 ms (configurable), and never after its handle is destroyed, even when another callback destroys it. Handles may outlive the cache. A source with ready-made peaks gives a handle holding them directly (`PeakHandle::forPeaks`), with no cache entry.
+- Memory-bounded in bytes (default 256 MB, configurable) with LRU eviction. Only entries no handle holds and no build is writing are evicted, least recently requested first; while every entry is in use the bound may be exceeded. Failed entries are dropped as soon as no handle holds them, so a later request retries.
 - Optional on-disk cache (milestone 10): off unless the application sets a directory (`setDiskCacheDirectory`); jwaveform never picks a location. One file per source, named by a hash of the key. Files are written to a temporary file in the same directory and then moved over the target, so a crash or concurrent reader never sees a partial file. The header holds a format version, the full key, sample rate, length and channel count; any mismatch means the file is ignored and rebuilt.
 
 Sources:
@@ -80,7 +82,8 @@ Deep zoom (milestone 6):
 - With raw samples, the waveform draws as a line through the samples, with a dot per sample once samples are several pixels apart.
 
 Drawing:
-- `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the coarsest level that still has at least one peak per physical pixel (logical width × `Graphics::getInternalContext().getPhysicalPixelScaleFactor()`), so waveforms stay sharp on high-DPI displays; cost is O(physical pixels).
+- `drawWaveform(Graphics, area, PeakData, sourceStart, sourceEnd, WaveformStyle)` paints a source span (fractional sample positions) across a rectangle, computing only the part inside the graphics clip region, one column per physical pixel, each filled from its min to its max (at least one physical pixel tall). Columns with no data yet are left empty. `WaveformStyle` holds channel mode, minimum lane height, display scale, envelope (gain in dB and linear fade-in/fade-out source ranges, evaluated at each column's centre) and colours. The column computation (`computeColumns`) is in `core/` and tested without graphics.
+- `WaveformView`: a component showing a source span (empty span = whole source) through a `PeakCache`, repainting on handle callbacks, with text for loading-without-peaks and failure states. Colour ids: background (default transparent), waveform (default `Slider::thumbColourId`), centre line (default label text at 25% alpha) and text (default `Label::textColourId`), resolved through the component, its parents, then the look and feel. Drawing picks the coarsest level that still has at least one peak per physical pixel (logical width × `Graphics::getInternalContext().getPhysicalPixelScaleFactor()`), so waveforms stay sharp on high-DPI displays; cost is O(physical pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
 - A vertical display scale (linear factor, default 1), separate from gain: it multiplies amplitudes. Amplitudes beyond the lane are clamped to its edge.
 - Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), colours from the look and feel. Amplitude is linear.
@@ -147,7 +150,8 @@ Keyboard:
 
 Input bindings:
 - Pro Tools defaults. Pro Tools maps Mac Command → Windows Ctrl, Option → Alt, Control → Start (Windows key); Windows and Linux here follow that, except where the Start key would collide with the OS.
-- Letter and bracket keys are matched by typed character (`KeyPress::getTextCharacter`), so they work on any layout. Single-letter keys act only while the timeline has keyboard focus.
+- Letter and bracket keys are matched by the character the key produces without modifiers (JUCE's key code), not the typed character: they work on any layout, and Option, which changes the typed character on macOS (Option + A types å), does not break them. Single-letter keys act only while the timeline has keyboard focus.
+- The binding logic is in `core/` (`keys::actionFor`, `wheel::actionFor`); `component/` converts JUCE events to it.
 - Wheel bindings use whichever wheel delta is non-zero, since macOS turns Shift + wheel into a horizontal delta.
 
 | Action | macOS | Windows / Linux |
@@ -156,10 +160,11 @@ Input bindings:
 | Scroll time horizontally | Shift + wheel | Shift + wheel |
 | Horizontal zoom, anchored at the edit cursor | Option + wheel | Alt + wheel |
 | Horizontal zoom, anchored at the pointer | Command + wheel | Ctrl + wheel |
-| Waveform height zoom | Option + Shift + wheel | Alt + Shift + wheel |
+| Waveform height zoom (wheel up makes waveforms smaller) | Option + Shift + wheel | Alt + Shift + wheel |
 | Horizontal zoom in / out, anchored at the edit cursor | T / R, Command + ] / [ | T / R, Ctrl + ] / [ |
 | Waveform height up / down | Command + Option + ] / [ | Ctrl + Alt + ] / [ |
 | Track height up / down | Control + Up / Down | Ctrl + Up / Down |
+| Zoom out to show the whole timeline | Option + A | Alt + A |
 | Select all clips | Command + A | Ctrl + A |
 
 - Track height changes apply to the selected tracks, else the keyboard cursor's track, else nothing.
@@ -169,7 +174,7 @@ Input bindings:
 - The binding logic is in `core/` (`wheel::actionFor`), independent of components.
 - macOS assigns Control + Up/Down to Mission Control and App Exposé by default, so the app never receives them unless the user disables those shortcuts (as Pro Tools users usually do). The README says so.
 
-Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. Light and dark.
+Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. The modules do not follow the system light or dark appearance; the host application chooses the colour scheme.
 
 Accessibility:
 - JUCE accessibility is component-based, so the clip area keeps a pool of proxy components, one per visible clip, recycled on scroll and zoom. Proxies are visible (JUCE leaves invisible components out of the accessibility tree) but paint nothing and pass all mouse events through (`setInterceptsMouseClicks(false, false)`). Each exposes name, track, time range and selection state. Accessibility focus never changes the selection, so a screen-reader user can browse a multi-selection without losing it. The press action selects the clip alone; the toggle action adds it to or removes it from the selection.
@@ -206,7 +211,8 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 
 - `core/`: time mapping (`TimeMapping` for samples ↔ pixels, `ZoomLimits`, `ClipTiming` for timeline ↔ source positions), ruler tick generation and formatting, hit testing, snapping, selection, keyboard navigation order, `Change` handling. No component dependencies where possible.
 - `component/`: `Timeline`, `TrackHeader`, `Ruler`, `ClipArea`, accessibility proxies and friends.
-- `demo/`: an app with synthetic clips and real files, and a stress-test mode.
+- `demo/timeline/`: the timeline app (synthetic clips and real files, and a stress-test mode, as the view grows).
+- `demo/waveform/`: the standalone jwaveform app: a synthetic hour-long stereo source (optionally slow to build), file open and drag and drop, a main view and an overview strip sharing one cache, and controls for channel mode, gain, fades and waveform zoom. `--snapshot <png>` waits for the build, saves a picture of the window and quits.
 - `tests/`: Catch2, plus a module check that builds both modules through `juce_add_module`; component tests under a headless message manager where needed. Include partial-`PeakData` reads concurrent with a build under TSan.
 - Docs per the project convention: SPEC.md (this file), DECISIONS.md, README.md.
 

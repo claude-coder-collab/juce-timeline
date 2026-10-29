@@ -19,6 +19,7 @@ public:
     void paint(juce::Graphics& g) override;
     void resized() override;
     void mouseDown(const juce::MouseEvent& event) override;
+    bool keyPressed(const juce::KeyPress& key) override;
     void mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
     void mouseMagnify(const juce::MouseEvent& event, float scaleFactor) override;
 

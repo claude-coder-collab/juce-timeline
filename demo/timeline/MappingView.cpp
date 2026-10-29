@@ -27,6 +27,7 @@ jtimeline::SamplePosition floorDiv(jtimeline::SamplePosition value, jtimeline::S
 MappingView::MappingView(std::function<void()> onViewChangedIn) :
     onViewChanged(std::move(onViewChangedIn))
 {
+    setWantsKeyboardFocus(true);
     juce::Random random{ 42 };
     lanes.resize(laneCount);
     for (auto& lane : lanes)
@@ -82,21 +83,52 @@ void MappingView::resized()
     trackScroll = clampedTrackScroll(trackScroll);
 }
 
+bool MappingView::keyPressed(const juce::KeyPress& key)
+{
+    const auto zoomAtPlayhead = [this](double steps) {
+        const auto target = zoomLimits().clamp(jtimeline::wheel::zoomedSamplesPerPixel(mapping.getSamplesPerPixel(), steps, jtimeline::wheel::zoomFactorPerKey));
+        setMapping(mapping.zoomedAroundSample(target, playhead, clipAreaWidth()));
+    };
+    const auto scaleWaveforms = [this](double steps) {
+        waveformScale = std::clamp(waveformScale * std::pow(jtimeline::wheel::waveformFactorPerStep, steps), 0.25, 64.0);
+        changed();
+    };
+    switch (jtimeline::keyActionFor(key))
+    {
+        case jtimeline::KeyAction::zoomIn:
+            zoomAtPlayhead(1.0);
+            return true;
+        case jtimeline::KeyAction::zoomOut:
+            zoomAtPlayhead(-1.0);
+            return true;
+        case jtimeline::KeyAction::zoomToFit:
+            zoomToFit();
+            return true;
+        case jtimeline::KeyAction::waveformTaller:
+            scaleWaveforms(1.0);
+            return true;
+        case jtimeline::KeyAction::waveformShorter:
+            scaleWaveforms(-1.0);
+            return true;
+        case jtimeline::KeyAction::none:
+        case jtimeline::KeyAction::trackTaller:
+        case jtimeline::KeyAction::trackShorter:
+        case jtimeline::KeyAction::selectAll:
+            break;
+    }
+    return false;
+}
+
 void MappingView::mouseDown(const juce::MouseEvent& event)
 {
+    grabKeyboardFocus();
     playhead = std::clamp<jtimeline::SamplePosition>(mapping.nearestSampleTo(static_cast<double>(event.position.x)), 0, timelineLength);
     changed();
 }
 
 void MappingView::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
-    const jtimeline::WheelModifiers modifiers{
-        .shift = event.mods.isShiftDown(),
-        .alt = event.mods.isAltDown(),
-        .command = event.mods.isCommandDown(),
-        .other = (juce::SystemStats::getOperatingSystemType() & juce::SystemStats::MacOSX) != 0 && event.mods.isCtrlDown(),
-    };
-    const auto action = jtimeline::wheel::actionFor(modifiers, { .deltaX = static_cast<double>(wheel.deltaX), .deltaY = static_cast<double>(wheel.deltaY), .isSmooth = wheel.isSmooth });
+    const auto action = jtimeline::wheel::actionFor(jtimeline::wheelModifiersFrom(event.mods), jtimeline::wheelDeltaFrom(wheel));
 
     const auto limits = zoomLimits();
     auto next = mapping;
