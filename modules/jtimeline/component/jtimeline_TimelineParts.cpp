@@ -143,6 +143,14 @@ ClipArea::ClipArea(Timeline& owner) :
 void ClipArea::paint(juce::Graphics& g)
 {
     auto& methods = TimelineLookAndFeelMethods::forComponent(timeline);
+    const auto wholeArea = g.getClipBounds().contains(getLocalBounds());
+    paintContents(g, methods);
+    if (wholeArea)
+        timeline.releaseUnusedWaveforms();
+}
+
+void ClipArea::paintContents(juce::Graphics& g, TimelineLookAndFeelMethods& methods)
+{
     g.fillAll(timeline.resolveColour(Timeline::backgroundColourId));
     if (timeline.tracks.empty())
         return;
@@ -226,12 +234,20 @@ void ClipArea::paintTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods
             continue;
         const auto left = mapping.toPixel(range.start);
         const auto right = mapping.toPixel(range.end);
-        const auto x1 = static_cast<float>(std::max(left, -clipMargin));
-        const auto x2 = std::max(static_cast<float>(std::min(right, width + clipMargin)), x1 + 1.0f);
-        const auto clipBounds = juce::Rectangle<float>::leftTopRightBottom(x1, body.getY(), x2, body.getBottom());
+        const auto x1 = std::max(left, -clipMargin);
+        const auto x2 = std::max(std::min(right, width + clipMargin), x1 + 1.0);
+        const auto clipBounds = juce::Rectangle<float>::leftTopRightBottom(static_cast<float>(x1), body.getY(), static_cast<float>(x2), body.getBottom());
         if (!clipBounds.intersects(bounds))
             continue;
-        methods.drawTimelineClip(g, timeline, { .id = id, .info = info, .bounds = clipBounds, .cutLeft = left<-clipMargin, .cutRight = right> width + clipMargin, .tier = tier, .colour = timeline.colourFor(*info) });
+        ClipWaveform waveform;
+        if (tier != ClipTier::minimal && body.getHeight() >= metrics.minWaveformHeight && info->source.has_value() && hasWaveform(*info))
+        {
+            waveform = timeline.waveformFor(*info, *info->source);
+            const auto samplesPerPixel = mapping.getSamplesPerPixel();
+            waveform.sourceStart = static_cast<double>(info->sourceOffset) + ((x1 - left) * samplesPerPixel);
+            waveform.sourceEnd = static_cast<double>(info->sourceOffset) + ((x2 - left) * samplesPerPixel);
+        }
+        methods.drawTimelineClip(g, timeline, { .id = id, .info = info, .bounds = clipBounds, .cutLeft = left<-clipMargin, .cutRight = right> width + clipMargin, .tier = tier, .colour = timeline.colourFor(*info), .startX = left, .endX = right, .waveform = std::move(waveform) });
     }
 }
 

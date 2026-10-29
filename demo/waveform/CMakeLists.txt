@@ -5,6 +5,7 @@ juce_add_gui_app(jwaveform_demo
     VERSION ${PROJECT_VERSION})
 target_sources(jwaveform_demo PRIVATE Main.cpp WaveformDemo.cpp)
 target_link_libraries(jwaveform_demo PRIVATE jtimeline::jtimeline)
+target_include_directories(jwaveform_demo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../shared)
 target_compile_definitions(jwaveform_demo PRIVATE
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:jwaveform_demo,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:jwaveform_demo,JUCE_VERSION>")

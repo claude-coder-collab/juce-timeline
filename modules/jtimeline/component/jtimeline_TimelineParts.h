@@ -49,6 +49,7 @@ public:
     void mouseDrag(const juce::MouseEvent& event) override;
 
 private:
+    void paintContents(juce::Graphics& g, TimelineLookAndFeelMethods& methods);
     void paintTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods, int index, juce::Rectangle<float> lane, SampleRange visible);
     void paintOverviewTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods, int index, juce::Rectangle<float> lane);
     void pickInOverview(const juce::MouseEvent& event);

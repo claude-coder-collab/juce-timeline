@@ -21,6 +21,7 @@ constexpr double overscrollFraction = 0.1;
 constexpr double clipMargin = 8.0;
 constexpr int playheadRepaintHalfWidth = 6;
 constexpr double densePixelsPerClip = 2.0;
+constexpr int waveformRepaintIntervalMs = 30;
 
 double sanitisedRate(double rate)
 {
@@ -51,6 +52,8 @@ Timeline::Timeline() :
 
 Timeline::~Timeline()
 {
+    stopTimer();
+    waveforms.clear();
     if (notifier != nullptr)
         notifier->removeListener(this);
     headers->clear();
@@ -87,6 +90,10 @@ void Timeline::refresh()
 void Timeline::setPeakCache(std::shared_ptr<jwaveform::PeakCache> cache)
 {
     peakCache = std::move(cache);
+    waveforms.clear();
+    changedWaveforms.clear();
+    stopTimer();
+    setMapping(mapping);
     clipArea->repaint();
 }
 
@@ -278,13 +285,20 @@ void Timeline::colourChanged()
     repaint();
 }
 
-juce::Colour Timeline::resolveColour(int colourId) const
+std::optional<juce::Colour> Timeline::specifiedColour(int colourId) const
 {
     for (const auto* component = static_cast<const juce::Component*>(this); component != nullptr; component = component->getParentComponent())
         if (component->isColourSpecified(colourId))
             return component->findColour(colourId);
     if (getLookAndFeel().isColourSpecified(colourId))
         return getLookAndFeel().findColour(colourId);
+    return std::nullopt;
+}
+
+juce::Colour Timeline::resolveColour(int colourId) const
+{
+    if (const auto specified = specifiedColour(colourId))
+        return *specified;
 
     const auto background = getLookAndFeel().findColour(juce::ResizableWindow::backgroundColourId);
     const auto text = getLookAndFeel().findColour(juce::Label::textColourId);
@@ -306,6 +320,10 @@ juce::Colour Timeline::resolveColour(int colourId) const
             return getLookAndFeel().findColour(juce::Slider::thumbColourId);
         case clipOutlineColourId:
             return juce::Colours::black.withAlpha(0.5f);
+        case waveformColourId:
+            return specifiedColour(clipTextColourId).value_or(text).withMultipliedAlpha(0.85f);
+        case fadeColourId:
+            return juce::Colours::black.withAlpha(0.3f);
         case playheadColourId:
             return getLookAndFeel().findColour(juce::TextEditor::focusedOutlineColourId).withAlpha(1.0f);
         case clipTextColourId:
@@ -332,7 +350,16 @@ juce::Colour Timeline::colourFor(const Track& track) const
 //==============================================================================
 ZoomLimits Timeline::getZoomLimits() const
 {
-    return ZoomLimits::forTimeline(sampleRate, length, clipAreaWidth());
+    const auto samplesPerPeak = peakCache != nullptr ? peakCache->getSamplesPerPeak() : jwaveform::defaultSamplesPerPeak;
+    return ZoomLimits::forTimeline(sampleRate, length, clipAreaWidth(), static_cast<double>(samplesPerPeak) / physicalPixelScale());
+}
+
+double Timeline::physicalPixelScale() const
+{
+    auto scale = static_cast<double>(juce::Component::getApproximateScaleFactorForComponent(this));
+    if (const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(getScreenBounds()))
+        scale *= display->scale;
+    return std::isfinite(scale) && scale > 0.0 ? scale : 1.0;
 }
 
 TimeMapping Timeline::clamped(const TimeMapping& candidate) const
@@ -610,16 +637,75 @@ const Timeline::TrackClips& Timeline::clipsFor(int index, SampleRange visible)
     return entry;
 }
 
-void Timeline::repaintClip(const ClipInfo& info)
+juce::Rectangle<int> Timeline::clipRect(const ClipInfo& info) const
 {
     const auto index = trackIndex(info.track);
     if (index < 0)
-        return;
+        return {};
     const auto width = clipAreaWidth();
     const auto lane = laneBounds(index);
     const auto left = mapping.toGraphicsX(info.start, width, clipMargin);
     const auto right = mapping.toGraphicsX(info.range().end, width, clipMargin);
-    clipArea->repaint(juce::Rectangle<float>::leftTopRightBottom(left - 2.0f, lane.getY(), right + 2.0f, lane.getBottom()).getSmallestIntegerContainer());
+    return juce::Rectangle<float>::leftTopRightBottom(left - 2.0f, lane.getY(), right + 2.0f, lane.getBottom()).getSmallestIntegerContainer().getIntersection(clipArea->getLocalBounds());
+}
+
+void Timeline::repaintClip(const ClipInfo& info)
+{
+    if (const auto area = clipRect(info); !area.isEmpty())
+        clipArea->repaint(area);
+}
+
+//==============================================================================
+ClipWaveform Timeline::waveformFor(const ClipInfo& info, const jwaveform::WaveformSource& source)
+{
+    std::shared_ptr<const jwaveform::PeakData> peaks;
+    auto state = jwaveform::PeakState::none;
+    if (source.peaks != nullptr)
+    {
+        peaks = source.peaks;
+        state = peaks->isComplete() ? jwaveform::PeakState::ready : jwaveform::PeakState::loading;
+    }
+    else if (peakCache != nullptr)
+    {
+        auto found = waveforms.find(source.key);
+        if (found == waveforms.end())
+            found = waveforms.emplace(source.key, Waveform{ .handle = peakCache->request(source, [this, key = source.key] { waveformChanged(key); }), .used = false }).first;
+        found->second.used = true;
+        peaks = found->second.handle.getData();
+        state = found->second.handle.getState();
+    }
+    const auto status = waveformStatusFor(state, peaks.get(), sampleRate);
+    return { .peaks = status == WaveformStatus::rateMismatch ? nullptr : std::move(peaks), .status = status, .sourceStart = 0.0, .sourceEnd = 0.0, .scale = getWaveformScaleFor(info.track), .envelope = envelopeFor(info) };
+}
+
+void Timeline::waveformChanged(const juce::String& key)
+{
+    changedWaveforms.insert(key);
+    if (!isTimerRunning())
+        startTimer(waveformRepaintIntervalMs);
+}
+
+void Timeline::timerCallback()
+{
+    stopTimer();
+    if (changedWaveforms.empty())
+        return;
+    juce::RectangleList<int> dirty;
+    for (const auto& [id, info] : clipInfos)
+        if (info.source && info.source->peaks == nullptr && changedWaveforms.contains(info.source->key))
+            if (const auto area = clipRect(info); !area.isEmpty())
+                dirty.add(area);
+    changedWaveforms.clear();
+    dirty.consolidate();
+    for (const auto& area : dirty)
+        clipArea->repaint(area);
+}
+
+void Timeline::releaseUnusedWaveforms()
+{
+    std::erase_if(waveforms, [](const auto& item) { return !item.second.used; });
+    for (auto& [key, waveform] : waveforms)
+        waveform.used = false;
 }
 
 //==============================================================================

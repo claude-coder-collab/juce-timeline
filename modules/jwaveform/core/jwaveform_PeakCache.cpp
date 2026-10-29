@@ -91,6 +91,8 @@ public:
         evict();
     }
 
+    [[nodiscard]] int samplesPerPeak() const { return std::max(1, options.samplesPerPeak); }
+
     [[nodiscard]] std::size_t memoryUsage() const
     {
         std::size_t total = 0;
@@ -315,6 +317,11 @@ PeakHandle PeakCache::request(const WaveformSource& source, std::function<void()
     handle.entry = std::move(entry);
     handle.listenerId = id;
     return handle;
+}
+
+int PeakCache::getSamplesPerPeak() const
+{
+    return impl->samplesPerPeak();
 }
 
 std::size_t PeakCache::getMemoryUsage() const

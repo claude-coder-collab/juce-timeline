@@ -1,8 +1,21 @@
 #include "TimelineDemo.h"
 
-TimelineDemo::TimelineDemo()
+namespace
 {
-    scenario.addItemList({ "Session: 16 tracks, 1 h", "Stress: 100 tracks, 20,000 clips", "Short: 8 tracks, 2 s", "Empty: 4 tracks, no clips" }, 1);
+
+std::shared_ptr<jwaveform::PeakCache> makeCache()
+{
+    jwaveform::PeakCache::Options options;
+    options.memoryLimitBytes = std::size_t{ 512 } * 1024 * 1024;
+    return std::make_shared<jwaveform::PeakCache>(options);
+}
+
+}
+
+TimelineDemo::TimelineDemo() :
+    cache(makeCache())
+{
+    scenario.addItemList({ "Session: 16 tracks + status examples, 1 h", "Stress: 100 tracks, 20,000 clips", "Short: 8 tracks, 2 s", "Empty: 4 tracks, no clips" }, 1);
     scenario.setSelectedId(1, juce::dontSendNotification);
     scenario.onChange = [this] { selectScenario(); };
     format.addItemList({ "h:mm:ss.mmm", "Samples" }, 1);
@@ -15,10 +28,7 @@ TimelineDemo::TimelineDemo()
         play.setButtonText(play.getToggleState() ? "Stop" : "Play");
         playStartTime = juce::Time::getMillisecondCounterHiRes();
         playStartPosition = timeline.getPlayhead();
-        if (play.getToggleState())
-            startTimerHz(60);
-        else
-            stopTimer();
+        startTimerHz(play.getToggleState() ? 60 : 4);
     };
     follow.onClick = [this] { timeline.setFollowPlayhead(follow.getToggleState()); };
     taller.onClick = [this] {
@@ -41,12 +51,23 @@ TimelineDemo::TimelineDemo()
         model.removeTrack();
         updateStatus();
     };
+    addFilesButton.onClick = [this] {
+        chooser = std::make_unique<juce::FileChooser>("Add audio files", juce::File{}, "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
+        const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems; // NOLINT(bugprone-signed-bitwise)
+        chooser->launchAsync(flags, [this](const juce::FileChooser& fc) { addFiles(fc.getResults()); });
+    };
+    slowBuilds.onClick = [this] {
+        model.setSlowBuilds(slowBuilds.getToggleState());
+        updateStatus();
+    };
 
-    hint.setText("Click the ruler or overview: playhead / move. Wheel: tracks. Shift: time. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: zoom at playhead. "
-                 "Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + A: fit. Home/End: ends.",
+    hint.setText("Drop audio files to add tracks. Click the ruler or overview: playhead / move. Wheel: tracks. Shift: time. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: zoom at playhead. "
+                 "Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + A: fit. Home/End: ends. Option/Alt + Shift + wheel, Cmd + Option/Ctrl + Alt + ]/[: waveform height.",
         juce::dontSendNotification);
     hint.setMinimumHorizontalScale(0.6f);
 
+    timeline.setPeakCache(cache);
+    overview.setPeakCache(cache);
     timeline.setModel(model.bind());
     overview.setModel(model.bind());
     overview.setOverviewMode(true);
@@ -66,10 +87,11 @@ TimelineDemo::TimelineDemo()
         timeline.setMapping(timeline.getMapping().withSampleAt(position, static_cast<double>(timeline.getClipAreaBounds().getWidth()) / 2.0));
     };
 
-    for (auto* component : std::initializer_list<juce::Component*>{ &scenario, &format, &fit, &play, &follow, &taller, &shorter, &edit, &addTrack, &removeTrack, &hint, &status, &timeline, &overview })
+    for (auto* component : std::initializer_list<juce::Component*>{ &scenario, &format, &fit, &play, &follow, &taller, &shorter, &edit, &addTrack, &removeTrack, &addFilesButton, &slowBuilds, &hint, &status, &timeline, &overview })
         addAndMakeVisible(component);
-    setSize(1200, 760);
+    setSize(1200, 780);
     updateStatus();
+    startTimer(250);
 }
 
 TimelineDemo::~TimelineDemo()
@@ -97,8 +119,38 @@ void TimelineDemo::selectFormat()
         timeline.setRulerFormatter({});
 }
 
+bool TimelineDemo::isIdle() const
+{
+    return !cache->isBuilding();
+}
+
+bool TimelineDemo::isInterestedInFileDrag(const juce::StringArray& /*files*/)
+{
+    return true;
+}
+
+void TimelineDemo::filesDropped(const juce::StringArray& files, int /*x*/, int /*y*/)
+{
+    juce::Array<juce::File> list;
+    for (const auto& path : files)
+        list.add(juce::File{ path });
+    addFiles(list);
+}
+
+void TimelineDemo::addFiles(const juce::Array<juce::File>& files)
+{
+    if (model.addFiles(files) > 0)
+        timeline.setTrackScroll(timeline.getTrackScroll() + 1'000'000);
+    updateStatus();
+}
+
 void TimelineDemo::timerCallback()
 {
+    if (!play.getToggleState())
+    {
+        updateStatus();
+        return;
+    }
     const auto elapsed = (juce::Time::getMillisecondCounterHiRes() - playStartTime) / 1000.0;
     const auto position = playStartPosition + static_cast<jtimeline::SamplePosition>(elapsed * DemoModel::getSampleRate());
     if (position >= model.getLength())
@@ -119,7 +171,8 @@ void TimelineDemo::updateStatus()
     status.setText(juce::String{ model.getNumTracks() } + " tracks, " + juce::String{ static_cast<juce::int64>(model.getNumClips()) } + " clips. "
             + juce::String{ mapping.getSamplesPerPixel(), 4 } + " samples/px, visible " + jtimeline::ruler::formatTime(static_cast<double>(visible.start) / rate, 0.001)
             + " to " + jtimeline::ruler::formatTime(static_cast<double>(visible.end) / rate, 0.001) + ", playhead "
-            + jtimeline::ruler::formatTime(static_cast<double>(timeline.getPlayhead()) / rate, 0.001) + ", waveform " + juce::String{ timeline.getWaveformScale(), 2 } + "x",
+            + jtimeline::ruler::formatTime(static_cast<double>(timeline.getPlayhead()) / rate, 0.001) + ", waveform " + juce::String{ timeline.getWaveformScale(), 2 } + "x. Peaks "
+            + juce::String{ static_cast<double>(cache->getMemoryUsage()) / (1024.0 * 1024.0), 1 } + " MB" + (cache->isBuilding() ? ", building" : ""),
         juce::dontSendNotification);
 }
 
@@ -127,13 +180,20 @@ void TimelineDemo::resized()
 {
     auto area = getLocalBounds().reduced(8);
     auto top = area.removeFromTop(28);
-    scenario.setBounds(top.removeFromLeft(230));
+    scenario.setBounds(top.removeFromLeft(260));
     top.removeFromLeft(6);
     format.setBounds(top.removeFromLeft(120));
-    for (const auto& [button, width] : std::initializer_list<std::pair<juce::Component*, int>>{ { &fit, 100 }, { &play, 70 }, { &follow, 110 }, { &taller, 70 }, { &shorter, 70 }, { &edit, 100 }, { &addTrack, 90 }, { &removeTrack, 100 } })
+    for (const auto& [button, width] : std::initializer_list<std::pair<juce::Component*, int>>{ { &addFilesButton, 100 }, { &slowBuilds, 110 }, { &edit, 100 }, { &addTrack, 90 }, { &removeTrack, 100 } })
     {
         top.removeFromLeft(6);
         button->setBounds(top.removeFromLeft(width));
+    }
+    area.removeFromTop(4);
+    auto second = area.removeFromTop(28);
+    for (const auto& [button, width] : std::initializer_list<std::pair<juce::Component*, int>>{ { &fit, 100 }, { &play, 70 }, { &follow, 110 }, { &taller, 70 }, { &shorter, 70 } })
+    {
+        button->setBounds(second.removeFromLeft(width));
+        second.removeFromLeft(6);
     }
     area.removeFromTop(4);
     hint.setBounds(area.removeFromTop(22));

@@ -55,8 +55,11 @@ private:
     private:
         void timerCallback() override
         {
-            stopTimer();
             auto* content = window.getContentComponent();
+            const auto* demo = dynamic_cast<TimelineDemo*>(content);
+            if (demo != nullptr && !demo->isIdle() && ++waits < 240)
+                return;
+            stopTimer();
             file.deleteFile();
             juce::FileOutputStream stream{ file };
             juce::PNGImageFormat{}.writeImageToStream(content->createComponentSnapshot(content->getLocalBounds(), true, 2.0f), stream);
@@ -66,6 +69,7 @@ private:
 
         juce::DocumentWindow& window;
         juce::File file;
+        int waits = 0;
     };
 
     std::unique_ptr<MainWindow> window;

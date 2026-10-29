@@ -1,11 +1,13 @@
 #pragma once
 
+#include "../core/jtimeline_ClipWaveform.h"
 #include "../core/jtimeline_LevelOfDetail.h"
 #include "../core/jtimeline_TimelineModel.h"
 #include "../core/jtimeline_TrackLayout.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -25,6 +27,18 @@ struct TimelineMetrics
     std::vector<int> trackHeightSteps{ trackHeights::defaultSteps.begin(), trackHeights::defaultSteps.end() }; /**< Keyboard track height steps, ascending. */
     DetailThresholds detail; /**< Clip widths for each level of detail. */
     float clipInset = 1.0f; /**< Space between a clip and its lane's top and bottom edges. */
+    float minWaveformHeight = 12.0f; /**< Clips shorter than this draw no waveform, and stacked channels shorter than this are combined. */
+};
+
+/** A clip's waveform as the Timeline asks the look and feel to draw it. */
+struct ClipWaveform
+{
+    std::shared_ptr<const jwaveform::PeakData> peaks; /**< The peaks, possibly partial; null until a build has opened the source. */
+    WaveformStatus status = WaveformStatus::none; /**< What the clip can show. */
+    double sourceStart = 0.0; /**< The source position at the left edge of ClipPaint::bounds. */
+    double sourceEnd = 0.0; /**< The source position at the right edge of ClipPaint::bounds. */
+    double scale = 1.0; /**< The waveform vertical scale of the clip's track. */
+    jwaveform::WaveformEnvelope envelope; /**< The clip's gain and fades. */
 };
 
 /** A clip as the Timeline asks the look and feel to draw it. */
@@ -37,6 +51,9 @@ struct ClipPaint
     bool cutRight = false; /**< The clip continues past the right of bounds. */
     ClipTier tier = ClipTier::full; /**< The level of detail; never coverage. */
     juce::Colour colour; /**< The clip's colour, or its track's, or the default clip colour. */
+    double startX = 0.0; /**< The clip's uncut left edge, which may lie far outside bounds. */
+    double endX = 0.0; /**< The clip's uncut right edge, which may lie far outside bounds. */
+    ClipWaveform waveform; /**< The waveform; its status is none when the clip draws without one. */
 };
 
 /** A ruler tick as the Timeline asks the look and feel to draw it. */
@@ -72,8 +89,12 @@ public:
 
     /** Draws a track lane's background. */
     virtual void drawTimelineLane(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> lane, TrackId track, const TrackInfo& info);
-    /** Draws one clip at the full, reduced or minimal tier. */
+    /** Draws one clip at the full, reduced or minimal tier, calling the waveform and fade methods. */
     virtual void drawTimelineClip(juce::Graphics& g, const Timeline& timeline, const ClipPaint& clip);
+    /** Draws a clip's waveform, or its failure state, in an area spanning the clip's bounds horizontally. */
+    virtual void drawTimelineClipWaveform(juce::Graphics& g, const Timeline& timeline, const ClipPaint& clip, juce::Rectangle<float> area);
+    /** Draws a full-tier clip's fade-in and fade-out over its body. */
+    virtual void drawTimelineClipFades(juce::Graphics& g, const Timeline& timeline, const ClipPaint& clip, juce::Rectangle<float> body);
     /** Draws a track's coverage strip: the spans occupied by clips too narrow to draw alone. */
     virtual void drawTimelineCoverage(juce::Graphics& g, const Timeline& timeline, const juce::RectangleList<float>& spans, juce::Colour colour);
     /** Draws the time ruler. */

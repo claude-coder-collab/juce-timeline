@@ -46,6 +46,7 @@ target_link_libraries(jwaveform_static PUBLIC jtimeline::juce)
 jtimeline_configure_target(jwaveform_static)
 
 add_library(jtimeline_static STATIC
+    modules/jtimeline/core/jtimeline_ClipWaveform.cpp
     modules/jtimeline/core/jtimeline_KeyInput.cpp
     modules/jtimeline/core/jtimeline_RulerTicks.cpp
     modules/jtimeline/core/jtimeline_TimeMapping.cpp

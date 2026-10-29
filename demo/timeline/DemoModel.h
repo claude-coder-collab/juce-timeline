@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SyntheticSource.h"
+
 #include <jtimeline/jtimeline.h>
 
 #include <unordered_map>
@@ -17,7 +19,9 @@ public:
 
     DemoModel();
 
-    void generate(Scenario scenario);
+    void generate(Scenario newScenario);
+    void setSlowBuilds(bool slow);
+    int addFiles(const juce::Array<juce::File>& files);
     [[nodiscard]] jtimeline::TimelineModel bind();
 
     void editRandomClips(int count);
@@ -51,14 +55,24 @@ private:
     [[nodiscard]] Track* findTrack(jtimeline::TrackId id);
     [[nodiscard]] const Track* findTrack(jtimeline::TrackId id) const;
     [[nodiscard]] std::vector<jtimeline::ClipId> clipsInRange(jtimeline::TrackId id, jtimeline::SamplePosition start, jtimeline::SamplePosition end) const;
+    void makeSources();
+    void randomiseLevels(jtimeline::ClipInfo& info);
+    void addStatusExamples();
+    [[nodiscard]] jwaveform::WaveformSource syntheticSource(const juce::String& name, const SyntheticSettings& settings) const;
     [[nodiscard]] jtimeline::ClipInfo randomClip(jtimeline::TrackId track, jtimeline::SamplePosition start, jtimeline::SamplePosition clipLength, const juce::String& name);
 
     static constexpr double sampleRate = 48000.0;
+    static constexpr jtimeline::SamplePosition sourceLength = 48000LL * 600;
 
     std::vector<Track> tracks;
     std::unordered_map<jtimeline::ClipId, Clip> clips;
     jtimeline::SamplePosition length = 0;
     std::uint64_t nextId = 1;
     juce::Random random{ 7 };
+    Scenario scenario = Scenario::session;
+    bool slowBuilds = false;
+    int generation = 0;
+    std::vector<jwaveform::WaveformSource> sources;
+    juce::AudioFormatManager formats;
     jtimeline::TimelineNotifier notifier;
 };

@@ -12,6 +12,7 @@
 #include <optional>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -37,12 +38,16 @@ class Ruler;
     wheel::actionFor). Horizontal zooms not anchored at the pointer are anchored at the edit
     cursor, which is the playhead for now.
 
+    Clips with a WaveformSource draw their waveforms through the PeakCache set with setPeakCache(),
+    requesting peaks only for clips drawn with room for a waveform and releasing them when no such
+    clip is drawn any more. Partial peaks are drawn while they build.
+
     Colours are set with setColour() using ColourIds on the timeline, an ancestor or the look and
     feel; drawing and metrics can be replaced through TimelineLookAndFeelMethods.
 
     All methods must be called on the message thread.
 */
-class Timeline : public juce::Component, private TimelineNotifier::Listener, private juce::ScrollBar::Listener
+class Timeline : public juce::Component, private TimelineNotifier::Listener, private juce::ScrollBar::Listener, private juce::Timer
 {
 public:
     /** Colour ids for setColour(). */
@@ -59,7 +64,9 @@ public:
         clipTextColourId = 0x2a52008, /**< Clip names. */
         clipOutlineColourId = 0x2a52009, /**< Clip outlines. */
         playheadColourId = 0x2a5200a, /**< The playhead. */
-        highlightColourId = 0x2a5200b /**< An overview's highlighted range. */
+        highlightColourId = 0x2a5200b, /**< An overview's highlighted range. */
+        waveformColourId = 0x2a5200c, /**< Clip waveforms. Falls back to the clip text colour. */
+        fadeColourId = 0x2a5200d /**< The shading above clip fade lines. */
     };
 
     /** Creates an empty timeline. Call setModel() to show data. */
@@ -83,7 +90,7 @@ public:
     /** Re-reads everything from the model, as a FullReset does. Models with a notifier never need this. */
     void refresh();
 
-    /** Sets the cache that builds clip waveforms; several timelines can share one. */
+    /** Sets the cache that builds clip waveforms; several timelines can share one. Without one, only ready-made peaks are drawn. */
     void setPeakCache(std::shared_ptr<jwaveform::PeakCache> cache);
     /** Returns the peak cache, or nullptr. */
     [[nodiscard]] const std::shared_ptr<jwaveform::PeakCache>& getPeakCache() const { return peakCache; }
@@ -93,7 +100,10 @@ public:
     [[nodiscard]] const TimeMapping& getMapping() const { return mapping; }
     /** Sets the zoom and horizontal position, clamped to the zoom limits and scroll range. */
     void setMapping(const TimeMapping& newMapping);
-    /** Returns the zoom limits for the current model and width. */
+    /**
+        Returns the zoom limits for the current model and width. The deepest zoom is one level-0
+        peak (the cache's samples per peak) per physical pixel.
+    */
     [[nodiscard]] ZoomLimits getZoomLimits() const;
     /** Returns the samples visible in the clip area. */
     [[nodiscard]] SampleRange getVisibleRange() const;
@@ -220,6 +230,7 @@ private:
     void modelChanged(const Change& change) override;
     void notifierDestroyed(TimelineNotifier& destroyedNotifier) override;
     void scrollBarMoved(juce::ScrollBar* bar, double newRangeStart) override;
+    void timerCallback() override;
 
     void readTracks();
     void readTimeline();
@@ -236,18 +247,33 @@ private:
     [[nodiscard]] double timelineExtent() const;
     void repaintPlayhead(SamplePosition position);
     void repaintClip(const ClipInfo& info);
+    [[nodiscard]] juce::Rectangle<int> clipRect(const ClipInfo& info) const;
+    [[nodiscard]] double physicalPixelScale() const;
+
+    ClipWaveform waveformFor(const ClipInfo& info, const jwaveform::WaveformSource& source);
+    void waveformChanged(const juce::String& key);
+    void releaseUnusedWaveforms();
 
     [[nodiscard]] int trackIndex(TrackId track) const;
     [[nodiscard]] juce::Rectangle<float> laneBounds(int index) const;
     [[nodiscard]] const ClipInfo* cachedClip(ClipId id) const;
     const TrackClips& clipsFor(int index, SampleRange visible);
     [[nodiscard]] std::vector<SampleRange> spansFor(TrackId track, SampleRange range, SamplePosition minGap) const;
+    [[nodiscard]] std::optional<juce::Colour> specifiedColour(int colourId) const;
     [[nodiscard]] juce::Colour colourFor(const ClipInfo& info) const;
     [[nodiscard]] juce::Colour colourFor(const Track& track) const;
 
     TimelineModel model;
     TimelineNotifier* notifier = nullptr;
     std::shared_ptr<jwaveform::PeakCache> peakCache;
+
+    struct Waveform
+    {
+        jwaveform::PeakHandle handle;
+        bool used = false;
+    };
+    std::unordered_map<juce::String, Waveform> waveforms;
+    std::unordered_set<juce::String> changedWaveforms;
     double sampleRate = 48000.0;
     SamplePosition length = 0;
 
