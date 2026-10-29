@@ -37,7 +37,7 @@ struct WheelAction
     double zoomAtEditCursorSteps = 0.0;
     /** Number of horizontal zoom-in steps anchored at the pointer; negative zooms out. */
     double zoomAtPointerSteps = 0.0;
-    /** Number of waveform height steps up; negative goes down. */
+    /** Number of waveform height steps up; negative goes down. Wheel up makes waveforms smaller. */
     double waveformZoomSteps = 0.0;
 
     /** Compares two actions. */
@@ -67,7 +67,7 @@ inline constexpr double waveformFactorPerStep = 1.189207115002721;
 
     Bindings: wheel scrolls tracks, with a trackpad's horizontal delta scrolling time directly;
     Shift scrolls time; Alt zooms at the edit cursor; Command zooms at the pointer; Alt + Shift
-    changes waveform height. Bindings with Shift use whichever delta is non-zero, since macOS
+    changes waveform height, smaller as the wheel moves up. Bindings with Shift use whichever delta is non-zero, since macOS
     turns Shift + wheel into a horizontal delta. Other combinations do nothing.
 */
 [[nodiscard]] WheelAction actionFor(WheelModifiers modifiers, WheelDelta delta);

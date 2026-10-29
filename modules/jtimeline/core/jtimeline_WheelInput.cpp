@@ -55,7 +55,7 @@ WheelAction actionFor(WheelModifiers modifiers, WheelDelta delta)
     }
     else if (alt && shift && !command)
     {
-        action.waveformZoomSteps = steps(eitherDelta(delta), delta.isSmooth);
+        action.waveformZoomSteps = -steps(eitherDelta(delta), delta.isSmooth);
     }
     return action;
 }

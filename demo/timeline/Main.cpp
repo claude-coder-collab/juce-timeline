@@ -9,7 +9,7 @@ public:
     MainComponent()
     {
         fit.onClick = [this] { view.zoomToFit(); };
-        hint.setText("Click: playhead. Wheel: tracks. Shift: time. Option/Alt: zoom at playhead. Cmd/Ctrl: zoom at pointer. Option/Alt + Shift: waveform height.", juce::dontSendNotification);
+        hint.setText("Click: playhead. Wheel: tracks. Shift: time. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: zoom at playhead. Cmd/Ctrl + wheel: zoom at pointer. Option/Alt + A: fit. Option/Alt + Shift + wheel, Cmd + Option + ]/[: waveform height.", juce::dontSendNotification);
         hint.setMinimumHorizontalScale(0.7f);
         for (auto* component : std::initializer_list<juce::Component*>{ &fit, &hint, &status, &view })
             addAndMakeVisible(component);

@@ -20,6 +20,8 @@ public:
     void resized() override;
     void mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
     void mouseMagnify(const juce::MouseEvent& event, float scaleFactor) override;
+    void mouseDown(const juce::MouseEvent& event) override;
+    bool keyPressed(const juce::KeyPress& key) override;
 
     bool isInterestedInFileDrag(const juce::StringArray& files) override;
     void filesDropped(const juce::StringArray& files, int x, int y) override;
@@ -33,6 +35,8 @@ private:
     void setSource(const jwaveform::WaveformSource& source);
     void setMapping(const jtimeline::TimeMapping& mapping);
     void centreOn(double sourcePosition);
+    void zoomToFit();
+    void zoomAtCentre(double steps, double factorPerStep);
     void updateStyle();
     [[nodiscard]] double sourceLength() const;
     [[nodiscard]] double sampleRate() const;

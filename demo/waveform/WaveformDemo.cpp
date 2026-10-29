@@ -112,6 +112,8 @@ WaveformDemo::WaveformDemo() :
 {
     formats.registerBasicFormats();
     mainView.setPeakCache(cache);
+    mainView.setInterceptsMouseClicks(false, false);
+    setWantsKeyboardFocus(true);
     overview->getView().setPeakCache(cache);
 
     openButton.onClick = [this] {
@@ -146,7 +148,7 @@ WaveformDemo::WaveformDemo() :
     for (auto* label : { &gainLabel, &fadeInLabel, &fadeOutLabel, &scaleLabel })
         label->setJustificationType(juce::Justification::centredRight);
 
-    hint.setText("Drop audio files here. Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + wheel: zoom at centre. Shift + wheel or swipe: scroll. Option/Alt + Shift + wheel: waveform zoom. Click or drag the overview to move.", juce::dontSendNotification);
+    hint.setText("Drop audio files here. Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: zoom at centre. Option/Alt + A: zoom to fit. Shift + wheel or swipe: scroll. Option/Alt + Shift + wheel, Cmd + Option/Ctrl + Alt + ]/[: waveform zoom.", juce::dontSendNotification);
     hint.setMinimumHorizontalScale(0.6f);
 
     for (auto* component : std::initializer_list<juce::Component*>{ &openButton, &syntheticButton, &slowBuild, &channelMode, &gain, &fadeIn, &fadeOut, &displayScale, &gainLabel, &fadeInLabel, &fadeOutLabel, &scaleLabel, &mainView, overview.get(), &hint, &status })
@@ -272,13 +274,7 @@ void WaveformDemo::resized()
 void WaveformDemo::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
 {
     const auto local = event.getEventRelativeTo(&mainView);
-    const jtimeline::WheelModifiers modifiers{
-        .shift = event.mods.isShiftDown(),
-        .alt = event.mods.isAltDown(),
-        .command = event.mods.isCommandDown(),
-        .other = (juce::SystemStats::getOperatingSystemType() & juce::SystemStats::MacOSX) != 0 && event.mods.isCtrlDown(),
-    };
-    const auto action = jtimeline::wheel::actionFor(modifiers, { .deltaX = static_cast<double>(wheel.deltaX), .deltaY = static_cast<double>(wheel.deltaY), .isSmooth = wheel.isSmooth });
+    const auto action = jtimeline::wheel::actionFor(jtimeline::wheelModifiersFrom(event.mods), jtimeline::wheelDeltaFrom(wheel));
     const auto limits = zoomLimits();
     auto next = mapping.scrolledBy(action.scrollTimePixels - action.scrollTracksPixels);
     if (action.zoomAtPointerSteps != 0.0)
@@ -288,6 +284,49 @@ void WaveformDemo::mouseWheelMove(const juce::MouseEvent& event, const juce::Mou
     if (action.waveformZoomSteps != 0.0)
         displayScale.setValue(displayScale.getValue() * std::pow(jtimeline::wheel::waveformFactorPerStep, action.waveformZoomSteps));
     setMapping(next);
+}
+
+void WaveformDemo::mouseDown(const juce::MouseEvent& /*event*/)
+{
+    grabKeyboardFocus();
+}
+
+bool WaveformDemo::keyPressed(const juce::KeyPress& key)
+{
+    switch (jtimeline::keyActionFor(key))
+    {
+        case jtimeline::KeyAction::zoomIn:
+            zoomAtCentre(1.0, jtimeline::wheel::zoomFactorPerKey);
+            return true;
+        case jtimeline::KeyAction::zoomOut:
+            zoomAtCentre(-1.0, jtimeline::wheel::zoomFactorPerKey);
+            return true;
+        case jtimeline::KeyAction::zoomToFit:
+            zoomToFit();
+            return true;
+        case jtimeline::KeyAction::waveformTaller:
+            displayScale.setValue(displayScale.getValue() * jtimeline::wheel::waveformFactorPerStep);
+            return true;
+        case jtimeline::KeyAction::waveformShorter:
+            displayScale.setValue(displayScale.getValue() / jtimeline::wheel::waveformFactorPerStep);
+            return true;
+        case jtimeline::KeyAction::none:
+        case jtimeline::KeyAction::trackTaller:
+        case jtimeline::KeyAction::trackShorter:
+        case jtimeline::KeyAction::selectAll:
+            break;
+    }
+    return false;
+}
+
+void WaveformDemo::zoomToFit()
+{
+    setMapping({ zoomLimits().maxSamplesPerPixel, 0 });
+}
+
+void WaveformDemo::zoomAtCentre(double steps, double factorPerStep)
+{
+    setMapping(mapping.zoomedAround(zoomLimits().clamp(jtimeline::wheel::zoomedSamplesPerPixel(mapping.getSamplesPerPixel(), steps, factorPerStep)), mainView.getWidth() / 2.0));
 }
 
 void WaveformDemo::mouseMagnify(const juce::MouseEvent& event, float scaleFactor)
@@ -312,8 +351,9 @@ void WaveformDemo::timerCallback()
     const auto data = mainView.getData();
     if (data != nullptr && mapping == jtimeline::TimeMapping{} && data->getLength() > 0 && mainView.getWidth() > 0)
     {
-        setMapping({ zoomLimits().maxSamplesPerPixel, 0 });
+        zoomToFit();
         updateStyle();
+        grabKeyboardFocus();
     }
 
     juce::String text;

@@ -2,6 +2,7 @@ include(Catch)
 
 add_executable(jtimeline_tests
     core/test_ClipTiming.cpp
+    core/test_KeyInput.cpp
     core/test_PeakLevels.cpp
     core/test_SampleRange.cpp
     core/test_TimeMapping.cpp

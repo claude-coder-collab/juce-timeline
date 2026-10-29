@@ -150,7 +150,8 @@ Keyboard:
 
 Input bindings:
 - Pro Tools defaults. Pro Tools maps Mac Command → Windows Ctrl, Option → Alt, Control → Start (Windows key); Windows and Linux here follow that, except where the Start key would collide with the OS.
-- Letter and bracket keys are matched by typed character (`KeyPress::getTextCharacter`), so they work on any layout. Single-letter keys act only while the timeline has keyboard focus.
+- Letter and bracket keys are matched by the character the key produces without modifiers (JUCE's key code), not the typed character: they work on any layout, and Option, which changes the typed character on macOS (Option + A types å), does not break them. Single-letter keys act only while the timeline has keyboard focus.
+- The binding logic is in `core/` (`keys::actionFor`, `wheel::actionFor`); `component/` converts JUCE events to it.
 - Wheel bindings use whichever wheel delta is non-zero, since macOS turns Shift + wheel into a horizontal delta.
 
 | Action | macOS | Windows / Linux |
@@ -159,10 +160,11 @@ Input bindings:
 | Scroll time horizontally | Shift + wheel | Shift + wheel |
 | Horizontal zoom, anchored at the edit cursor | Option + wheel | Alt + wheel |
 | Horizontal zoom, anchored at the pointer | Command + wheel | Ctrl + wheel |
-| Waveform height zoom | Option + Shift + wheel | Alt + Shift + wheel |
+| Waveform height zoom (wheel up makes waveforms smaller) | Option + Shift + wheel | Alt + Shift + wheel |
 | Horizontal zoom in / out, anchored at the edit cursor | T / R, Command + ] / [ | T / R, Ctrl + ] / [ |
 | Waveform height up / down | Command + Option + ] / [ | Ctrl + Alt + ] / [ |
 | Track height up / down | Control + Up / Down | Ctrl + Up / Down |
+| Zoom out to show the whole timeline | Option + A | Alt + A |
 | Select all clips | Command + A | Ctrl + A |
 
 - Track height changes apply to the selected tracks, else the keyboard cursor's track, else nothing.
@@ -172,7 +174,7 @@ Input bindings:
 - The binding logic is in `core/` (`wheel::actionFor`), independent of components.
 - macOS assigns Control + Up/Down to Mission Control and App Exposé by default, so the app never receives them unless the user disables those shortcuts (as Pro Tools users usually do). The README says so.
 
-Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. Light and dark.
+Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. The modules do not follow the system light or dark appearance; the host application chooses the colour scheme.
 
 Accessibility:
 - JUCE accessibility is component-based, so the clip area keeps a pool of proxy components, one per visible clip, recycled on scroll and zoom. Proxies are visible (JUCE leaves invisible components out of the accessibility tree) but paint nothing and pass all mouse events through (`setInterceptsMouseClicks(false, false)`). Each exposes name, track, time range and selection state. Accessibility focus never changes the selection, so a screen-reader user can browse a multi-selection without losing it. The press action selects the clip alone; the toggle action adds it to or removes it from the selection.

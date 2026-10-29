@@ -17,7 +17,7 @@ namespace jwaveform
     can't be read.
 
     Colours resolve through the component, its parents and the look and feel, falling back to
-    standard JUCE colours so that light and dark schemes work without setup.
+    standard JUCE look-and-feel colours. The host application chooses the colour scheme.
 */
 class WaveformView : public juce::Component
 {

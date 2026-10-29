@@ -82,3 +82,10 @@
 - **Outward rounding of peaks.** Rounding min down and max up never understates the envelope after `int16` quantisation.
 - **`append` takes a span of channel pointers.** Callers pass arrays or vectors without raw pointer-to-pointer decay.
 - **Separate waveform demo.** jwaveform is usable without the timeline, so it gets its own app; the timeline demo moved to `demo/timeline/`.
+
+## 2026-10-29 — Milestone 2 QA feedback
+
+- **Option/Alt + A zooms to fit.** Requested; Pro Tools users expect a one-key "show everything".
+- **Keys matched by key code, not typed character.** Option changes the typed character on macOS (Option + A types å), which made the typed-character rule unusable for Option bindings. JUCE's key code is the layout's character without modifiers, so layout independence is kept.
+- **Option/Alt + Shift + wheel up makes waveforms smaller.** Requested direction.
+- **No light/dark appearance following.** The modules are embedded in host applications, which decide the colour scheme.
