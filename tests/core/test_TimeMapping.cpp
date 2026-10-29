@@ -135,3 +135,18 @@ TEST_CASE("TimeMapping allows pre-roll before zero", "[mapping]")
     CHECK(mapping.toPixel(0) == Approx(3.0));
     CHECK(mapping.sampleAt(1.5) == -150);
 }
+
+TEST_CASE("TimeMapping zoom at a visible sample keeps it in place", "[mapping]")
+{
+    const TimeMapping mapping{ 10.0, 1000 };
+    const auto zoomed = mapping.zoomedAroundSample(0.25, 3000, 500.0);
+    CHECK(zoomed.getSamplesPerPixel() == 0.25);
+    CHECK(zoomed.toPixel(3000) == Approx(200.0));
+}
+
+TEST_CASE("TimeMapping zoom at an off-screen sample centres on it", "[mapping]")
+{
+    const TimeMapping mapping{ 10.0, 1000 };
+    CHECK(mapping.zoomedAroundSample(2.0, 1'000'000, 500.0).toPixel(1'000'000) == Approx(250.0));
+    CHECK(mapping.zoomedAroundSample(2.0, 0, 500.0).toPixel(0) == Approx(250.0));
+}

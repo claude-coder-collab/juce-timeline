@@ -9,10 +9,11 @@ public:
     MainComponent()
     {
         fit.onClick = [this] { view.zoomToFit(); };
-        hint.setText("Cmd/Ctrl + wheel or pinch zooms at the pointer; wheel scrolls time.", juce::dontSendNotification);
+        hint.setText("Click: playhead. Wheel: tracks. Shift: time. Option/Alt: zoom at playhead. Cmd/Ctrl: zoom at pointer. Option/Alt + Shift: waveform height.", juce::dontSendNotification);
+        hint.setMinimumHorizontalScale(0.7f);
         for (auto* component : std::initializer_list<juce::Component*>{ &fit, &hint, &status, &view })
             addAndMakeVisible(component);
-        setSize(1000, 300);
+        setSize(1100, 600);
     }
 
     void resized() override
@@ -33,7 +34,8 @@ private:
         const auto visible = mapping.visibleRange(view.getWidth());
         status.setText(juce::String{ mapping.getSamplesPerPixel(), 4 } + " samples/px, start "
                 + juce::String{ mapping.getStartSample() } + " + " + juce::String{ mapping.getStartFraction(), 3 }
-                + ", visible " + juce::String{ visible.start } + " to " + juce::String{ visible.end },
+                + ", visible " + juce::String{ visible.start } + " to " + juce::String{ visible.end }
+                + ", playhead " + juce::String{ view.getPlayhead() } + ", waveform " + juce::String{ view.getWaveformScale(), 2 } + "x",
             juce::dontSendNotification);
     }
 

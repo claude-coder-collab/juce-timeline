@@ -17,3 +17,4 @@ END_JUCE_MODULE_DECLARATION
 #include <jwaveform/jwaveform.h>
 
 #include "core/jtimeline_TimeMapping.h"
+#include "core/jtimeline_WheelInput.h"

@@ -40,7 +40,8 @@ target_link_libraries(jwaveform_static PUBLIC jtimeline::juce)
 jtimeline_configure_target(jwaveform_static)
 
 add_library(jtimeline_static STATIC
-    modules/jtimeline/core/jtimeline_TimeMapping.cpp)
+    modules/jtimeline/core/jtimeline_TimeMapping.cpp
+    modules/jtimeline/core/jtimeline_WheelInput.cpp)
 add_library(jtimeline::jtimeline ALIAS jtimeline_static)
 target_link_libraries(jtimeline_static PUBLIC jtimeline::jwaveform)
 jtimeline_configure_target(jtimeline_static)

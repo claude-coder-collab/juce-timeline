@@ -53,6 +53,11 @@ public:
 
     /** Returns this mapping with a new zoom, keeping the position under anchorPixel where it is. */
     [[nodiscard]] TimeMapping zoomedAround(double newSamplesPerPixel, double anchorPixel) const;
+    /**
+        Returns this mapping with a new zoom, anchored at a sample position: if the position is
+        within a view of the given width it stays where it is, otherwise the view centres on it.
+    */
+    [[nodiscard]] TimeMapping zoomedAroundSample(double newSamplesPerPixel, SamplePosition anchor, double width) const;
     /** Returns this mapping scrolled so that the view content moves left by the given pixels. */
     [[nodiscard]] TimeMapping scrolledBy(double pixels) const;
     /** Returns this mapping scrolled so that the sample position's left edge is at the pixel. */

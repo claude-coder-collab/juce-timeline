@@ -79,6 +79,15 @@ TimeMapping TimeMapping::zoomedAround(double newSamplesPerPixel, double anchorPi
     return result.withStartOffsetFrom(anchorSample, (anchorOffset - anchorWhole) - (anchorPixel * result.samplesPerPixel));
 }
 
+TimeMapping TimeMapping::zoomedAroundSample(double newSamplesPerPixel, SamplePosition anchor, double width) const
+{
+    const auto pixel = toPixel(anchor);
+    const auto inView = pixel >= 0.0 && pixel <= width;
+    auto result = *this;
+    result.samplesPerPixel = sanitisedSamplesPerPixel(newSamplesPerPixel);
+    return result.withSampleAt(anchor, inView ? pixel : std::max(width, 0.0) / 2.0);
+}
+
 TimeMapping TimeMapping::scrolledBy(double pixels) const
 {
     return withStartOffsetFrom(startSample, startFraction + (pixels * samplesPerPixel));

@@ -70,3 +70,4 @@
 - **Peak level choice: the coarsest level with at least one peak per physical pixel.** "Nearest" could pick a level coarser than a pixel and lose detail.
 - **`SamplePosition` and `SampleRange` live in jwaveform.** jtimeline depends on jwaveform anyway, and one definition avoids conversions between the modules.
 - **Build mirrors juce-grid.** Same presets, sanitizer and clang-tidy options, and `tools/check.py`.
+- **Wheel bindings in `core/`, one notch per notched-wheel event.** Per-notch delta sizes differ about sixfold between platforms, so counting events gives the same zoom per notch everywhere. Trackpad deltas are proportional instead. The milestone 1 demo had ignored the spec's bindings (plain wheel scrolled time); it now uses the shared logic.

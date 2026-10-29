@@ -163,7 +163,10 @@ Input bindings:
 | Select all clips | Command + A | Ctrl + A |
 
 - Track height changes apply to the selected tracks, else the keyboard cursor's track, else nothing.
-- Each wheel notch (or equivalent trackpad delta) zooms horizontally by a factor of 2^(1/2); each key press by 2.
+- Each wheel notch (or equivalent trackpad delta) zooms horizontally by a factor of 2^(1/2); each key press by 2. A notched wheel counts one notch per event, since platforms report very different delta sizes per notch (JUCE gives about 0.04 on macOS, 0.2 on Linux, 0.23 on Windows). A smooth (trackpad) delta of 0.125, about 64 points on macOS, counts as one notch.
+- Wheel scrolling moves 60 px per notch; smooth scrolling follows the fingers (a JUCE delta of 1 is 512 px).
+- On macOS, wheel events with Control held do nothing (Control is not part of any binding there).
+- The binding logic is in `core/` (`wheel::actionFor`), independent of components.
 - macOS assigns Control + Up/Down to Mission Control and App Exposé by default, so the app never receives them unless the user disables those shortcuts (as Pro Tools users usually do). The README says so.
 
 Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. Light and dark.
