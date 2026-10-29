@@ -22,6 +22,7 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **Track**: a lane holding clips. Overlapping clips on one track are allowed and drawn overlapping, in draw order (later on top), with the overlap visible: clip bodies are slightly translucent and each clip keeps its own outline, so the clip underneath can be seen. Hit testing picks the topmost clip.
 - **Draw order**: a per-track total order of clips defined by the model. It is the same whichever range is queried.
 - **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length of at least 1 sample, a source offset, a name and a colour. Clips lie within `[0, length()]` of the timeline. Optional display-only gain (in dB) and fades.
+- **Clip kind**: `audio` (the default) or `group`. A group clip stands for a group of clips the model keeps elsewhere; the view does not model or draw its contents. It has a span, name and colour like any clip but no source, so it never has a waveform, fades or gain line; its body uses a look-and-feel group style (e.g. a distinct outline and a group badge). Empty groups are drawn the same way. Selection, hit testing, level of detail, accessibility and edit requests treat it as a clip; what an edit means for its contents is the model's business.
 - **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The view may scroll before 0 (pre-roll) but no clip starts there. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
 - **Source rate**: every source is at the timeline sample rate, so a clip's source offset and source length are in timeline samples, and a timeline position `p` inside a clip is source sample `sourceOffset + (p - start)`. Converting sources is the model's job. A waveform source whose sample rate differs is shown as a failure state (rate mismatch), not drawn.
 - **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`, 64-bit), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
@@ -34,7 +35,7 @@ View pulls from the model (all required unless marked optional):
 - `trackIds()` → ordered list of `TrackId`
 - `trackInfo(TrackId)` → `std::optional<TrackInfo>`: name, colour, height hint (optional fields). Empty means the track does not exist.
 - `clipsInRange(TrackId, rangeStart, rangeEnd)` → ids of the clips on the track with `clip.start < rangeEnd && clip.start + clip.length > rangeStart`, in draw order. So a clip starting before the range but extending into it is included, and one ending exactly at `rangeStart` is not. The view always passes `0 <= rangeStart < rangeEnd <= length()`, never sentinel extremes. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
-- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain (dB, 0 = unity), fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
+- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: kind, track, start, length, source offset, source length (optional), name, colour, gain (dB, 0 = unity), fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
 - `adjacentClip(TrackId, ClipId, direction)`, optional → the previous or next clip on the track in start order (ties by draw order), or empty at either end. Used by Left/Right. Without it the view searches with `clipsInRange` windows that double in width from the visible range until a clip is found or the track bounds are reached.
@@ -78,7 +79,7 @@ Deep zoom:
 - With raw samples, the waveform draws as a line through the samples, with a dot per sample once samples are several pixels apart.
 
 Drawing:
-- `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per pixel, so cost is O(pixels).
+- `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per physical pixel (logical width × `Graphics::getInternalContext().getPhysicalPixelScaleFactor()`), so waveforms stay sharp on high-DPI displays; cost is O(physical pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
 - A vertical display scale (linear factor, default 1), separate from gain: it multiplies amplitudes before the amplitude mapping, so in log mode it shifts the visible range. Amplitudes beyond the lane are clamped to its edge.
 - Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), optional logarithmic amplitude, colours from the look and feel.
@@ -130,6 +131,7 @@ Level of detail:
 - **Overview mode** (`setOverviewMode(true)`), for an overview strip: every track is drawn in coverage form only, with no per-clip queries, waveforms, headers or clip selection. The view draws a visible-range rectangle set by `setHighlightedRange`, and reports clicks and drags as time positions through a callback, so the application can move another view.
 
 Selection:
+- Selection is object-based (clips and tracks), not Pro Tools' range-on-tracks model; only scrolling and zooming follow Pro Tools.
 - Clips (multi-select by click, Shift, Ctrl/Cmd, rubber-band), tracks (by header), and a time range (drag on the ruler). Selection is view state, reported through callbacks and held by id.
 - It survives model changes. On a clips-changed or tracks-changed notification the affected selected ids are re-queried, and on a full reset all selected ids are; ids whose info is empty are dropped.
 - Select all (see Input bindings) selects all clips via `clipsInRange(track, 0, length())` on every track. This is the only full-size query.

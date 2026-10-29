@@ -43,3 +43,9 @@
 - **Mouse and keyboard bindings match Pro Tools defaults.** Target users know them. The `+`/`-` zoom keys and the earlier waveform-zoom modifiers are dropped; per-track waveform zoom is API only.
 - **Windows/Linux track height is Ctrl + Up/Down, not Start + Up/Down.** Pro Tools' Start-key mapping collides with Windows window snapping; Ctrl is free because Command + Up/Down is unused.
 - **Zoom anchor "edit cursor" is the time-selection start, else the playhead.** The view has no separate insertion point.
+
+## 2026-10-29 — Selection model, group clips, DPI
+
+- **Object selection stays; only scroll and zoom follow Pro Tools.** Pro Tools' range-based selection was considered and declined.
+- **Group clip kind reserved, contents not modelled.** Leaves room for sessions with clip groups (including empty groups used as notes) without the view knowing about nesting.
+- **Peak density by physical pixels.** JUCE renders at physical resolution but the data density is ours to choose.
