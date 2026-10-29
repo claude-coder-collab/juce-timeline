@@ -21,8 +21,8 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **Timeline**: an ordered list of tracks over a shared time axis.
 - **Track**: a lane holding clips. Overlapping clips on one track are allowed and drawn overlapping, in draw order (later on top), with the overlap visible: clip bodies are slightly translucent and each clip keeps its own outline, so the clip underneath can be seen. Hit testing picks the topmost clip.
 - **Draw order**: a per-track total order of clips defined by the model. It is the same whichever range is queried.
-- **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length, a source offset, a name and a colour. Optional display-only gain and fades.
-- **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
+- **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length of at least 1 sample, a source offset, a name and a colour. Clips lie within `[0, length()]` of the timeline. Optional display-only gain and fades.
+- **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The view may scroll before 0 (pre-roll) but no clip starts there. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
 - **Source rate**: every source is at the timeline sample rate, so a clip's source offset and source length are in timeline samples, and a timeline position `p` inside a clip is source sample `sourceOffset + (p - start)`. Converting sources is the model's job. A waveform source whose sample rate differs is shown as a failure state (rate mismatch), not drawn.
 - **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`, 64-bit), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
 
@@ -33,8 +33,8 @@ Same approach as juce-grid: a struct of `std::function` members, no inheritance,
 View pulls from the model (all required unless marked optional):
 - `trackIds()` → ordered list of `TrackId`
 - `trackInfo(TrackId)` → `std::optional<TrackInfo>`: name, colour, height hint (optional fields). Empty means the track does not exist.
-- `clipsInRange(TrackId, start, end)` → ids of the clips on the track whose span `[start, start + length)` overlaps the half-open range `[start, end)`, in draw order. A clip starting before the range but extending into it is included. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
-- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain, fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist.
+- `clipsInRange(TrackId, rangeStart, rangeEnd)` → ids of the clips on the track with `clip.start < rangeEnd && clip.start + clip.length > rangeStart`, in draw order. So a clip starting before the range but extending into it is included, and one ending exactly at `rangeStart` is not. The view always passes `0 <= rangeStart < rangeEnd <= length() + 1`, never sentinel extremes. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
+- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain, fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
 - Optional extras for later: markers, loop range, tempo map (for the bars ruler).
@@ -43,7 +43,7 @@ Reads happen only for visible tracks and clips, plus selected ids when checking 
 
 Model pushes to the view: a `TimelineNotifier` owned by the model, one `changed(Change)` call, always on the message thread. `Change` is a variant: tracks changed (added, removed, reordered), clips changed (a set of ids, covering add, remove, move and property edits), markers changed, or full reset. A change of `sampleRate()` or `length()` is notified as a full reset. No dirty flag.
 
-On clips changed, the view re-queries each id. It repaints the clip's old rectangle (from its per-layout geometry cache, so a clip that was off screen needs no repaint) and its new one. An id whose `clipInfo` is empty is treated as removed.
+On clips changed, the view re-queries each id. It repaints the clip's old rectangle (from its per-layout geometry cache, so a clip that was off screen needs no repaint) and its new one. An id whose `clipInfo` is empty is treated as removed. Because `ClipInfo` carries no draw-order position, every track touched by a changed id (its old track from the cache and its new one from `clipInfo`) has `clipsInRange` called again for the visible range, refreshing the cached draw order used for painting and hit testing.
 
 Lifetime: as juce-grid. The view never owns the model; a destroyed notifier detaches its views.
 
@@ -53,7 +53,7 @@ Multiple views of one model are supported (e.g. an overview strip and a main vie
 
 Data:
 - `PeakData`: a multi-resolution min/max pyramid for one audio source, with the source's sample rate, length and channel count. Level 0 is one min/max pair per N samples (default 64) per channel; each higher level halves resolution. Values are `int16` normalised to ±1, so an hour of 48 kHz stereo is about 43 MB including the pyramid (level 0 about 22 MB).
-- Storage is chunked in fixed-size blocks that never reallocate once written. The number of valid level-0 pairs is published atomically (release on write, acquire on read), so a reader can draw a partially built `PeakData` while the builder appends. Higher levels are filled as each block of the level below completes.
+- Storage is chunked in fixed-size blocks that never reallocate once written. Each level has its own atomically published count of valid pairs (release on write, acquire on read), so a reader can draw a partially built `PeakData` while the builder appends. Higher levels are filled as the pairs below them complete; a reader reads each level only up to that level's count, and draws the remainder of the range from the coarsest level that covers it (at worst level 0).
 - `PeakData` is shared as `std::shared_ptr<const PeakData>` (the builder holds the only mutable access). Eviction drops the cache's reference; anything drawing keeps its own until done.
 
 Building:
@@ -78,7 +78,7 @@ Drawing:
 - `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per pixel, so cost is O(pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
 - Optional gain scaling and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), optional logarithmic amplitude, colours from the look and feel.
-- Repaints when the cache reports progress, rate-limited to one repaint per affected component per 30 ms.
+- Repaints when the cache reports progress, rate-limited to one repaint per view per 30 ms. A repaint covers only the union of the cached rectangles of visible clips using the affected key, never the whole clip area.
 - Failure (missing file, unreadable) is reported as a state the clip can show, not an exception.
 
 ## View behaviour (read-only, v1)
@@ -113,17 +113,20 @@ Clips:
 Selection:
 - Clips (multi-select by click, Shift, Ctrl/Cmd, rubber-band), tracks (by header), and a time range (drag on the ruler). Selection is view state, reported through callbacks and held by id.
 - It survives model changes. On a clips-changed or tracks-changed notification the affected selected ids are re-queried, and on a full reset all selected ids are; ids whose info is empty are dropped.
-- Ctrl/Cmd+A selects all clips via `clipsInRange(track, min, max)` on every track. This is the only full-size query.
+- Ctrl/Cmd+A selects all clips via `clipsInRange(track, 0, length() + 1)` on every track. This is the only full-size query.
 
 Keyboard:
-- Left/Right move to the previous/next clip on the same track by start position, ties broken by draw order. Up/Down move to the adjacent track's clip under the current clip's start, else the nearest by start. The view scrolls to keep the focused clip visible.
-- Home/End jump to the timeline ends.
-- Zoom in on `+` or `=`, zoom out on `-`, plus the numpad keys, matched by key code so they work on common layouts.
+- The keyboard cursor is on a clip, on a track, or nowhere. Arrows move the cursor and select what it lands on, replacing the selection; Shift+arrow adds to it. The view scrolls to keep the cursor visible.
+- With no cursor, any arrow puts it on the first visible clip of the first visible track, or on the first visible track if it has no visible clip.
+- On a clip: Left/Right move to the previous/next clip on the same track by start position, ties broken by draw order; at the first or last clip the cursor stays. Up/Down move to the adjacent track (never skipping one): to its clip under the current clip's start, else its nearest visible clip by start, else the track itself. Escape moves the cursor from a clip to its track.
+- On a track: Up/Down move to the adjacent track; Right or Enter moves to the track's first visible clip, if any.
+- Home/End jump the view to the timeline ends.
+- Zoom in on the characters `+` or `=`, zoom out on `-`, matched by typed character (`KeyPress::getTextCharacter`) so they work on any layout, plus the numpad `+`/`-` by key code.
 
 Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. Light and dark.
 
 Accessibility:
-- JUCE accessibility is component-based, so the clip area keeps a pool of invisible proxy components, one per visible clip, recycled on scroll and zoom. Each exposes name, track, time range and selection state, and focusing one selects and focuses the clip.
+- JUCE accessibility is component-based, so the clip area keeps a pool of invisible proxy components, one per visible clip, recycled on scroll and zoom. Each exposes name, track, time range and selection state. Accessibility focus never changes the selection, so a screen-reader user can browse a multi-selection without losing it. The press action selects the clip alone; the toggle action adds it to or removes it from the selection.
 - Tracks are exposed through their header components.
 - Off-screen clips are not exposed; they are reached by keyboard navigation, which scrolls them into view.
 - Selection changes are announced. Each platform to be tested manually.
@@ -132,7 +135,7 @@ Accessibility:
 
 Edits are requests to the model, never applied by the view. The model validates, applies and notifies; the view updates only on notification. Optional callbacks, absent callbacks disable the matching gesture:
 - `moveClips(moves)` where each move is clip id, new track, new start
-- `trimClips(trims)` (start/end edge drags, adjusting offset). The view clamps trims to `[0, source length)` in source samples; a clip without a source length is clamped only at offset 0.
+- `trimClips(trims)` (start/end edge drags, adjusting offset). The view clamps trims so that `0 <= offset` and `offset + length <= source length` (an end edge can reach the source's last sample), with length at least 1 and start at least 0. A clip without a source length is clamped only at offset 0.
 - `splitClip(id, at)`, `deleteClips(ids)`, `duplicateClips(ids, offset)`
 - `setFades(id, in, out)`, `setGain(id, gain)`
 - `addClip(track, start, source)` for drops from outside (file drag and drop)

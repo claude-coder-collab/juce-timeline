@@ -13,3 +13,12 @@
 - **Raw-sample fetch for deep zoom.** Level 0 (64 samples/peak) is too coarse at pixel-per-sample zoom, and the message thread may not read audio.
 - **No summed channel mode.** A sum cannot be derived from min/max pairs; combined mode is a min/max envelope.
 - **Reader factory runs on background threads.** It is the single exception to the message-thread rule for model callbacks.
+
+## 2026-10-29 — Spec review, second pass
+
+- **Clips lie within `[0, length()]`, length at least 1.** Lets select-all use real bounds instead of int64 sentinels (which invite overflow in model code), and keeps zero-length clips from being unreachable.
+- **Per-level valid counts in `PeakData`.** Deriving higher-level validity from level 0 is fragile; each level publishes its own.
+- **Changed clips trigger a draw-order refresh of their tracks.** `ClipInfo` stays free of an order field; the view re-asks `clipsInRange` for the visible range instead.
+- **Accessibility focus is decoupled from selection.** Screen-reader browsing must not destroy a multi-selection; selection goes through press/toggle actions.
+- **Keyboard cursor can rest on a track.** Restores keyboard access to tracks and gives Up/Down a defined result when the adjacent track has no clip in view.
+- **Zoom keys match by character, not key code.** Key codes are layout-dependent; characters are not.
