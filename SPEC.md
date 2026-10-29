@@ -23,7 +23,7 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **Draw order**: a per-track total order of clips defined by the model. It is the same whichever range is queried.
 - **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length, a source offset, a name and a colour. Optional display-only gain and fades.
 - **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
-- **Source time**: a clip's source offset and source length are in source samples at the source sample rate, both supplied in `ClipInfo`. A timeline position `p` inside a clip maps to source sample `sourceOffset + (p - start) * sourceRate / timelineRate`. This is display mapping only; nothing is resampled.
+- **Source rate**: every source is at the timeline sample rate, so a clip's source offset and source length are in timeline samples, and a timeline position `p` inside a clip is source sample `sourceOffset + (p - start)`. Converting sources is the model's job. A waveform source whose sample rate differs is shown as a failure state (rate mismatch), not drawn.
 - **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`, 64-bit), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
 
 ## Model communication
@@ -34,7 +34,7 @@ View pulls from the model (all required unless marked optional):
 - `trackIds()` → ordered list of `TrackId`
 - `trackInfo(TrackId)` → `std::optional<TrackInfo>`: name, colour, height hint (optional fields). Empty means the track does not exist.
 - `clipsInRange(TrackId, start, end)` → ids of the clips on the track whose span `[start, start + length)` overlaps the half-open range `[start, end)`, in draw order. A clip starting before the range but extending into it is included. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
-- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source sample rate, source length (optional), name, colour, gain, fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist.
+- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain, fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist.
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
 - Optional extras for later: markers, loop range, tempo map (for the bars ruler).
@@ -132,7 +132,7 @@ Accessibility:
 
 Edits are requests to the model, never applied by the view. The model validates, applies and notifies; the view updates only on notification. Optional callbacks, absent callbacks disable the matching gesture:
 - `moveClips(moves)` where each move is clip id, new track, new start
-- `trimClips(trims)` (start/end edge drags, adjusting offset). The view clamps trims to `[0, source length)` in source time; a clip without a source length is clamped only at offset 0.
+- `trimClips(trims)` (start/end edge drags, adjusting offset). The view clamps trims to `[0, source length)` in source samples; a clip without a source length is clamped only at offset 0.
 - `splitClip(id, at)`, `deleteClips(ids)`, `duplicateClips(ids, offset)`
 - `setFades(id, in, out)`, `setGain(id, gain)`
 - `addClip(track, start, source)` for drops from outside (file drag and drop)
@@ -155,7 +155,7 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 
 ## Architecture and testing
 
-- `core/`: time mapping (samples ↔ pixels, timeline ↔ source samples), ruler tick generation and formatting, hit testing, snapping, selection, keyboard navigation order, `Change` handling. No component dependencies where possible.
+- `core/`: time mapping (samples ↔ pixels, timeline ↔ source positions), ruler tick generation and formatting, hit testing, snapping, selection, keyboard navigation order, `Change` handling. No component dependencies where possible.
 - `component/`: `Timeline`, `TrackHeader`, `Ruler`, `ClipArea`, accessibility proxies and friends.
 - `demo/`: an app with synthetic clips and real files, and a stress-test mode.
 - `tests/`: Catch2; component tests under a headless message manager where needed. Include partial-`PeakData` reads concurrent with a build under TSan.
