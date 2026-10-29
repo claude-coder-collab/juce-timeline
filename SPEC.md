@@ -38,9 +38,9 @@ View pulls from the model (all required unless marked optional):
 - `clipInfo(ClipId)` → `std::optional<ClipInfo>`: kind, track, start, length, source offset, source length (optional), name, colour, gain (dB, 0 = unity), fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
-- `adjacentClip(TrackId, ClipId, direction)`, optional → the previous or next clip on the track in start order (ties by draw order), or empty at either end. Used by Left/Right. Without it the view searches with `clipsInRange` windows that double in width from the visible range until a clip is found or the track bounds are reached.
-- `clipSpans(TrackId, rangeStart, rangeEnd, minGap)`, optional → the occupied spans of the track within the range, merged where clips overlap or the gap between them is smaller than `minGap` samples, sorted by start. Lets coarse drawing (see Level of detail) avoid listing every clip. Without it the view derives spans from `clipsInRange` and `clipInfo`.
-- Optional extras for later: markers, loop range, tempo map (for the bars ruler).
+- `adjacentClip(TrackId, ClipId, direction)` → the previous or next clip on the track in start order (ties by draw order), or empty at either end. Used by Left/Right.
+- `clipSpans(TrackId, rangeStart, rangeEnd, minGap)` → the occupied spans of the track within the range, merged where clips overlap or the gap between them is smaller than `minGap` samples, sorted by start. Lets coarse drawing (see Level of detail) avoid listing every clip.
+- Optional extras for later: markers, loop range.
 
 Reads happen only for visible tracks and clips, plus selected ids when checking they still exist.
 
@@ -60,20 +60,20 @@ Data:
 - `PeakData` is shared as `std::shared_ptr<const PeakData>` (the builder holds the only mutable access). Eviction drops the cache's reference; anything drawing keeps its own until done.
 
 Building:
-- `PeakBuilder`: builds `PeakData` from an `AudioFormatReader` (or any callback that yields sample blocks) on a background thread, progressively, so partial results can be drawn while analysis continues.
+- `PeakBuilder`: builds `PeakData` from an `AudioFormatReader` on a background thread, progressively, so partial results can be drawn while analysis continues.
 - Builds run on a thread pool owned by the cache (default 2 threads, configurable). A build is cancelled when no handle requests its key any more; finished or partial results stay cached.
 
 Cache:
 - `PeakCache`: shared, keyed by a source key supplied by the model (e.g. file path plus modification time). One build per key however many clips use it. Thread-safe.
 - Memory-bounded in bytes (default 256 MB, configurable) with LRU eviction. A key with a build in progress is not evicted.
-- Optional on-disk cache: off unless the application sets a directory (`setDiskCacheDirectory`); jwaveform never picks a location. One file per source, named by a hash of the key. Files are written to a temporary file in the same directory and then moved over the target, so a crash or concurrent reader never sees a partial file. The header holds a format version, the full key, sample rate, length and channel count; any mismatch means the file is ignored and rebuilt.
+- Optional on-disk cache (milestone 10): off unless the application sets a directory (`setDiskCacheDirectory`); jwaveform never picks a location. One file per source, named by a hash of the key. Files are written to a temporary file in the same directory and then moved over the target, so a crash or concurrent reader never sees a partial file. The header holds a format version, the full key, sample rate, length and channel count; any mismatch means the file is ignored and rebuilt.
 
 Sources:
 - The cache is owned by the application and handed to each timeline as `timeline.setPeakCache(std::shared_ptr<PeakCache>)`, so several views (e.g. an overview and a main view) share one cache and build each source once. Without a cache, clips draw without waveforms.
 - `WaveformSource` (what a clip hands to the view): a key plus a reader factory, or a ready `PeakData`. The model owns file management; jwaveform never decides where audio lives.
 - The reader factory is called on background threads, never on the message thread, and must be thread-safe. It is the one model-supplied callback exempt from the message-thread rule. Each call returns a new reader, so readers are never shared between threads.
 
-Deep zoom:
+Deep zoom (milestone 6):
 - When the view shows fewer source samples per pixel than level 0 holds, the drawing needs raw samples. A `SampleCache` (owned by `PeakCache`, same memory bound) fetches the visible span of raw samples through the reader factory on the pool, in fixed-size blocks with LRU eviction.
 - Until the raw samples arrive, level 0 is drawn stretched. A source that is only a ready `PeakData` (no reader) always draws level 0 stretched.
 - With raw samples, the waveform draws as a line through the samples, with a dot per sample once samples are several pixels apart.
@@ -81,8 +81,8 @@ Deep zoom:
 Drawing:
 - `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per physical pixel (logical width × `Graphics::getInternalContext().getPhysicalPixelScaleFactor()`), so waveforms stay sharp on high-DPI displays; cost is O(physical pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
-- A vertical display scale (linear factor, default 1), separate from gain: it multiplies amplitudes before the amplitude mapping, so in log mode it shifts the visible range. Amplitudes beyond the lane are clamped to its edge.
-- Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), optional logarithmic amplitude, colours from the look and feel.
+- A vertical display scale (linear factor, default 1), separate from gain: it multiplies amplitudes. Amplitudes beyond the lane are clamped to its edge.
+- Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), colours from the look and feel. Amplitude is linear.
 - Repaints when the cache reports progress, rate-limited to one repaint per view per 30 ms. A repaint covers only the union of the cached rectangles of visible clips using the affected key, never the whole clip area.
 - Failure (missing file, unreadable) is reported as a state the clip can show, not an exception.
 
@@ -96,7 +96,7 @@ Rendering:
 Layout:
 - Track headers on the left (name, colour; contents customisable by a component factory lambda for mute/solo/arm buttons). Header components exist only for visible tracks, kept in a pool and rebound to a different `TrackId` as tracks scroll in and out; the factory is called only when the pool needs another component, and a rebind callback lets custom contents update for the new track. Time ruler on top. Clip area fills the rest.
 - Track heights per track, with a global default. Keyboard height changes step through a look-and-feel list of heights (default 24, 32, 48, 72, 112, 176, 272 px); a track between steps moves to the next step in that direction. Vertical scroll for tracks; horizontal scroll for time.
-- Playhead drawn from `setPlayhead(samples)`; the view never plays audio. Only the old and new playhead strips are repainted. Optional follow mode (page or smooth scroll).
+- Playhead drawn from `setPlayhead(samples)`; the view never plays audio. Only the old and new playhead strips are repainted. Optional page follow mode: when the playhead leaves the visible range, the view jumps so the playhead is at its left edge. There is no smooth-scroll follow.
 - Optional loop range and markers drawn on the ruler.
 
 Zoom and scroll:
@@ -104,15 +104,15 @@ Zoom and scroll:
 - **Edit cursor**: the start of the time selection if there is one, otherwise the playhead. It is the anchor for zooms that are not anchored at the pointer: the anchor's screen position stays fixed, or if it is off screen, the view centres on it.
 - Bindings follow Pro Tools defaults (see Input bindings). Trackpad horizontal deltas scroll horizontally directly; pinch (`mouseMagnify`) zooms around the pointer.
 - API: `setVisibleRange`, `zoomToFit`, `zoomToSelection`.
-- Limits: from 1/16 samples per pixel (16 px per sample) up to the whole timeline fitting in the view. For zoom-out purposes the timeline is at least 10 seconds long, so an empty timeline still has a range.
+- Limits: from 1/16 samples per pixel (16 px per sample; until deep zoom lands in milestone 6, the level-0 block size per physical pixel) up to the whole timeline fitting in the view. For zoom-out purposes the timeline is at least 10 seconds long, so an empty timeline still has a range.
 
 Ruler:
 - Default formatter: `h:mm:ss.mmm`, dropping leading zero units where zoom allows, and adding sub-millisecond digits (down to microseconds) when ticks are closer than a millisecond. At sample-level zoom, minor ticks mark individual samples. Negative positions are prefixed with `-`.
-- Later formatters: samples, SMPTE timecode, bars and beats (needs a tempo map). A custom formatter lambda is accepted. Tick density adapts to zoom.
+- A custom formatter lambda replaces the default (applications supply samples, timecode or bars and beats this way). Tick density adapts to zoom.
 
 Clips:
 - Drawn as rounded blocks with name, colour, waveform and fades as supplied. Clip gain scales the waveform but is not drawn as a line. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
-- Clip body is drawn by the view; a custom painter lambda may replace it per clip.
+- Custom clip drawing goes through the look and feel; there is no per-clip painter lambda.
 - Painting is clipped to the visible range.
 
 Waveform zoom:
@@ -211,11 +211,13 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 1. Skeleton: modules, CMake, demo app, time mapping with tests. The CI workflow file is written but not run until a repository exists.
 2. jwaveform: PeakData, PeakBuilder, PeakCache, drawing; standalone demo.
 3. Timeline view: tracks, clips (plain blocks), level-of-detail tiers and overview mode, ruler, virtual scrolling, zoom, playhead.
-4. Waveforms in clips, progressive loading, deep-zoom raw samples, clip fades and gain scaling.
+4. Waveforms in clips, progressive loading, clip fades and gain scaling.
 5. Selection, keyboard, accessibility, markers and loop range.
-6. First Windows and Linux CI run, fix portability issues.
-7. Editing: move, trim, split, delete, with snapping.
-8. Editing: drag and drop in, duplicate, fade handles, undo forwarding.
+6. Deep zoom: `SampleCache`, raw-sample drawing, zoom to 16 px per sample.
+7. First Windows and Linux CI run, fix portability issues.
+8. Editing: move, trim, split, delete, with snapping.
+9. Editing: drag and drop in, duplicate, fade handles, undo forwarding.
+10. On-disk peak cache.
 
 ## Out of scope
 

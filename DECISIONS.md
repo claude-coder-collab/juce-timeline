@@ -53,3 +53,13 @@
 ## 2026-10-29 — No gain lines
 
 - **Gain lines and gain editing removed.** Out of scope. Clip gain remains model data that scales the drawn waveform.
+
+## 2026-10-29 — Scope tightening
+
+- **`adjacentClip` and `clipSpans` required.** Fallbacks were second, slower implementations to write and test.
+- **`PeakBuilder` takes `AudioFormatReader` only.** Other sources can be wrapped as readers.
+- **No per-clip painter lambda.** The look and feel already covers custom drawing.
+- **No logarithmic amplitude.** Waveform zoom covers quiet material.
+- **On-disk peak cache deferred to the last milestone; deep zoom deferred to after selection and accessibility.** Both are separable subsystems nothing else depends on.
+- **Page follow only.** Smooth-scroll follow was the biggest threat to frame rate.
+- **No built-in alternative ruler formatters or tempo map.** The formatter lambda covers them.
