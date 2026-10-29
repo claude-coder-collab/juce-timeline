@@ -80,6 +80,7 @@ Deep zoom:
 Drawing:
 - `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per pixel, so cost is O(pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
+- A vertical display scale (linear factor, default 1), separate from gain: it multiplies amplitudes before the amplitude mapping, so in log mode it shifts the visible range. Amplitudes beyond the lane are clamped to its edge.
 - Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), optional logarithmic amplitude, colours from the look and feel.
 - Repaints when the cache reports progress, rate-limited to one repaint per view per 30 ms. A repaint covers only the union of the cached rectangles of visible clips using the affected key, never the whole clip area.
 - Failure (missing file, unreadable) is reported as a state the clip can show, not an exception.
@@ -112,6 +113,11 @@ Clips:
 - Drawn as rounded blocks with name, colour, waveform, fades and gain line as supplied. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
 - Clip body is drawn by the view; a custom painter lambda may replace it per clip.
 - Painting is clipped to the visible range. The gain line is drawn on a dB scale (look-and-feel range, default -60 to +12 dB).
+
+Waveform zoom:
+- Each view has a waveform vertical scale, `setWaveformScale(factor)`, from 0.25× to 64× (default 1×), passed to the waveform drawing as its display scale. It affects drawing only: no peak data is rebuilt and the model is not told.
+- A track may override it with `setTrackWaveformScale(TrackId, std::optional<double>)`; empty means the view's scale.
+- Ctrl/Cmd + Alt/Option + wheel over the clip area scales by steps of 2^(1/4); over a track's clips with Shift added, it scales only that track. Ctrl/Cmd + Alt/Option + Up/Down does the same for the whole view. Each scale change notifies a callback, so an application can persist it.
 
 Level of detail:
 - Each clip is drawn at a tier chosen by its on-screen width (thresholds from the look and feel):

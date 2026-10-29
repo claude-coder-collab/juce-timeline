@@ -33,3 +33,7 @@
 - **Explicit overview mode.** An overview shows the whole timeline, so it gets coverage-only drawing rather than relying on automatic tiers.
 - **Gain in dB.** Matches how users think about and edit gain; the view converts for drawing.
 - **Disk cache written temp-then-move.** No partial files after a crash or under concurrent access.
+
+## 2026-10-29 — Waveform zoom
+
+- **Waveform zoom is a view-level display scale with per-track overrides.** It is separate from clip gain (model data) and never rebuilds peaks; overrides cover the common case of one quiet track.
