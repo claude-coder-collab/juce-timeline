@@ -52,7 +52,7 @@ Multiple views of one model are supported (e.g. an overview strip and a main vie
 ## Waveforms (jwaveform)
 
 Data:
-- `PeakData`: a multi-resolution min/max pyramid for one audio source, with the source's sample rate, length and channel count. Level 0 is one min/max pair per N samples (default 64) per channel; each higher level halves resolution. Values are `int16` normalised to ±1, so an hour of 48 kHz stereo is about 22 MB including the pyramid.
+- `PeakData`: a multi-resolution min/max pyramid for one audio source, with the source's sample rate, length and channel count. Level 0 is one min/max pair per N samples (default 64) per channel; each higher level halves resolution. Values are `int16` normalised to ±1, so an hour of 48 kHz stereo is about 43 MB including the pyramid (level 0 about 22 MB).
 - Storage is chunked in fixed-size blocks that never reallocate once written. The number of valid level-0 pairs is published atomically (release on write, acquire on read), so a reader can draw a partially built `PeakData` while the builder appends. Higher levels are filled as each block of the level below completes.
 - `PeakData` is shared as `std::shared_ptr<const PeakData>` (the builder holds the only mutable access). Eviction drops the cache's reference; anything drawing keeps its own until done.
 
