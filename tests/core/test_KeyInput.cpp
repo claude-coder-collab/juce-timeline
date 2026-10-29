@@ -49,3 +49,14 @@ TEST_CASE("Track height uses Control on macOS and Ctrl elsewhere", "[keys]")
     CHECK(keys::actionFor({ .named = KeyInput::Named::up }, false) == KeyAction::none);
     CHECK(keys::actionFor({ .named = KeyInput::Named::up, .shift = true, .command = true, .control = true }, false) == KeyAction::none);
 }
+
+TEST_CASE("Home and End move the view to the timeline ends", "[keys]")
+{
+    for (const auto isMac : { true, false })
+    {
+        CHECK(keys::actionFor({ .named = KeyInput::Named::home }, isMac) == KeyAction::scrollToStart);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::end }, isMac) == KeyAction::scrollToEnd);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::home, .command = true }, isMac) == KeyAction::none);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::end, .shift = true }, isMac) == KeyAction::none);
+    }
+}

@@ -11,7 +11,9 @@ struct KeyInput
     enum class Named {
         none, /**< The key is identified by its character. */
         up, /**< Up arrow. */
-        down /**< Down arrow. */
+        down, /**< Down arrow. */
+        home, /**< Home. */
+        end /**< End. */
     };
 
     /**
@@ -37,7 +39,9 @@ enum class KeyAction {
     waveformShorter, /**< Waveform height down. */
     trackTaller, /**< Track height up. */
     trackShorter, /**< Track height down. */
-    selectAll /**< Select all clips. */
+    selectAll, /**< Select all clips. */
+    scrollToStart, /**< Move the view to the timeline start. */
+    scrollToEnd /**< Move the view to the timeline end. */
 };
 
 /** Keyboard bindings, following Pro Tools' defaults. */

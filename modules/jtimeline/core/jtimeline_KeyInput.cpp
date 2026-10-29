@@ -22,6 +22,12 @@ KeyAction actionFor(const KeyInput& key, bool isMac)
     const auto commandAlt = !key.shift && key.alt && key.command && !macControl;
     const auto trackHeightModifiers = !key.shift && !key.alt && (isMac ? key.control && !key.command : key.command);
 
+    if (key.named == KeyInput::Named::home || key.named == KeyInput::Named::end)
+    {
+        if (!plain)
+            return KeyAction::none;
+        return key.named == KeyInput::Named::home ? KeyAction::scrollToStart : KeyAction::scrollToEnd;
+    }
     if (key.named != KeyInput::Named::none)
     {
         if (!trackHeightModifiers)

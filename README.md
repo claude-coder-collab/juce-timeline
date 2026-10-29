@@ -5,7 +5,36 @@ Two [JUCE 8](https://juce.com) modules for showing an audio timeline: tracks of 
 - **jwaveform**: waveform peaks and drawing. It works without a timeline.
 - **jtimeline**: the timeline view. It depends on jwaveform.
 
-Status: milestone 2. jwaveform is usable: progressive peak building, a shared memory-bounded cache and waveform drawing. The timeline view arrives in later milestones (see `SPEC.md`).
+Status: milestone 3. The timeline view shows tracks and clips as plain blocks, with a ruler, zoom, scrolling, a playhead and an overview mode. Waveforms in clips arrive in milestone 4; selection and keyboard navigation in milestone 5 (see `SPEC.md`).
+
+### jtimeline
+
+Describe your data as a `TimelineModel` of callbacks and report changes through a `TimelineNotifier`:
+
+```cpp
+jtimeline::TimelineNotifier notifier;                    // owned by your model
+jtimeline::Timeline timeline;
+timeline.setModel({
+    .trackIds = [&] { return myTrackIds(); },            // display order
+    .trackInfo = [&](jtimeline::TrackId id) { return myTrackInfo(id); },
+    .clipsInRange = [&](jtimeline::TrackId id, auto start, auto end) { return myClips(id, start, end); },  // draw order
+    .clipInfo = [&](jtimeline::ClipId id) { return myClipInfo(id); },
+    .sampleRate = [&] { return 48000.0; },
+    .length = [&] { return myLength(); },
+    .clipSpans = [&](jtimeline::TrackId id, auto start, auto end, auto minGap) { return mySpans(id, start, end, minGap); },
+    .notifier = &notifier,
+});
+notifier.changed(jtimeline::ClipsChanged{ .ids = { movedClip } });
+timeline.onTimeClicked = [&](jtimeline::SamplePosition position) { timeline.setPlayhead(position); };
+```
+
+`clipsInRange` should not scan the whole track; keep clips sorted by start. `clipSpans` is optional but keeps zoomed-out views of thousands of clips fast. For an overview strip, bind a second `Timeline` to the same model and call `setOverviewMode(true)`.
+
+Customise headers with `setTrackHeaderFactory` and a `TrackHeader` subclass, drawing by deriving your LookAndFeel from `jtimeline::TimelineLookAndFeelMethods`, and colours with `Timeline::ColourIds`.
+
+Bindings follow Pro Tools. On macOS, Control + Up/Down (track height) only reaches the app if Mission Control's shortcuts for them are turned off.
+
+### jwaveform
 
 ```cpp
 auto cache = std::make_shared<jwaveform::PeakCache>();   // share between views

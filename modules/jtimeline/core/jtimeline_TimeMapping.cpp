@@ -41,6 +41,12 @@ double TimeMapping::toPixel(SamplePosition position) const
     return (static_cast<double>(position - startSample) - startFraction) / samplesPerPixel;
 }
 
+double TimeMapping::toPixelAt(double position) const
+{
+    const auto whole = std::floor(position);
+    return (static_cast<double>(static_cast<SamplePosition>(whole) - startSample) + ((position - whole) - startFraction)) / samplesPerPixel;
+}
+
 double TimeMapping::toPixelLength(SamplePosition length) const
 {
     return static_cast<double>(length) / samplesPerPixel;
@@ -91,6 +97,11 @@ TimeMapping TimeMapping::zoomedAroundSample(double newSamplesPerPixel, SamplePos
 TimeMapping TimeMapping::scrolledBy(double pixels) const
 {
     return withStartOffsetFrom(startSample, startFraction + (pixels * samplesPerPixel));
+}
+
+TimeMapping TimeMapping::withStartPosition(double position) const
+{
+    return std::isfinite(position) ? withStartOffsetFrom(0, position) : *this;
 }
 
 TimeMapping TimeMapping::withSampleAt(SamplePosition position, double pixel) const
