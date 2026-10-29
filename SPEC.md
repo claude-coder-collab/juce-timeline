@@ -21,7 +21,7 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **Timeline**: an ordered list of tracks over a shared time axis.
 - **Track**: a lane holding clips. Overlapping clips on one track are allowed and drawn overlapping, in draw order (later on top), with the overlap visible: clip bodies are slightly translucent and each clip keeps its own outline, so the clip underneath can be seen. Hit testing picks the topmost clip.
 - **Draw order**: a per-track total order of clips defined by the model. It is the same whichever range is queried.
-- **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length of at least 1 sample, a source offset, a name and a colour. Clips lie within `[0, length()]` of the timeline. Optional display-only gain and fades.
+- **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length of at least 1 sample, a source offset, a name and a colour. Clips lie within `[0, length()]` of the timeline. Optional display-only gain (in dB) and fades.
 - **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The view may scroll before 0 (pre-roll) but no clip starts there. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
 - **Source rate**: every source is at the timeline sample rate, so a clip's source offset and source length are in timeline samples, and a timeline position `p` inside a clip is source sample `sourceOffset + (p - start)`. Converting sources is the model's job. A waveform source whose sample rate differs is shown as a failure state (rate mismatch), not drawn.
 - **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`, 64-bit), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
@@ -34,9 +34,11 @@ View pulls from the model (all required unless marked optional):
 - `trackIds()` → ordered list of `TrackId`
 - `trackInfo(TrackId)` → `std::optional<TrackInfo>`: name, colour, height hint (optional fields). Empty means the track does not exist.
 - `clipsInRange(TrackId, rangeStart, rangeEnd)` → ids of the clips on the track with `clip.start < rangeEnd && clip.start + clip.length > rangeStart`, in draw order. So a clip starting before the range but extending into it is included, and one ending exactly at `rangeStart` is not. The view always passes `0 <= rangeStart < rangeEnd <= length()`, never sentinel extremes. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
-- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain, fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
+- `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain (dB, 0 = unity), fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
+- `adjacentClip(TrackId, ClipId, direction)`, optional → the previous or next clip on the track in start order (ties by draw order), or empty at either end. Used by Left/Right. Without it the view searches with `clipsInRange` windows that double in width from the visible range until a clip is found or the track bounds are reached.
+- `clipSpans(TrackId, rangeStart, rangeEnd, minGap)`, optional → the occupied spans of the track within the range, merged where clips overlap or the gap between them is smaller than `minGap` samples, sorted by start. Lets coarse drawing (see Level of detail) avoid listing every clip. Without it the view derives spans from `clipsInRange` and `clipInfo`.
 - Optional extras for later: markers, loop range, tempo map (for the bars ruler).
 
 Reads happen only for visible tracks and clips, plus selected ids when checking they still exist.
@@ -63,9 +65,10 @@ Building:
 Cache:
 - `PeakCache`: shared, keyed by a source key supplied by the model (e.g. file path plus modification time). One build per key however many clips use it. Thread-safe.
 - Memory-bounded in bytes (default 256 MB, configurable) with LRU eviction. A key with a build in progress is not evicted.
-- Optional on-disk cache: off unless the application sets a directory (`setDiskCacheDirectory`); jwaveform never picks a location. One file per source, named by a hash of the key. The header holds a format version, the full key, sample rate, length and channel count; any mismatch means the file is ignored and rebuilt.
+- Optional on-disk cache: off unless the application sets a directory (`setDiskCacheDirectory`); jwaveform never picks a location. One file per source, named by a hash of the key. Files are written to a temporary file in the same directory and then moved over the target, so a crash or concurrent reader never sees a partial file. The header holds a format version, the full key, sample rate, length and channel count; any mismatch means the file is ignored and rebuilt.
 
 Sources:
+- The cache is owned by the application and handed to each timeline as `timeline.setPeakCache(std::shared_ptr<PeakCache>)`, so several views (e.g. an overview and a main view) share one cache and build each source once. Without a cache, clips draw without waveforms.
 - `WaveformSource` (what a clip hands to the view): a key plus a reader factory, or a ready `PeakData`. The model owns file management; jwaveform never decides where audio lives.
 - The reader factory is called on background threads, never on the message thread, and must be thread-safe. It is the one model-supplied callback exempt from the message-thread rule. Each call returns a new reader, so readers are never shared between threads.
 
@@ -77,7 +80,7 @@ Deep zoom:
 Drawing:
 - `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per pixel, so cost is O(pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
-- Optional gain scaling and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), optional logarithmic amplitude, colours from the look and feel.
+- Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), optional logarithmic amplitude, colours from the look and feel.
 - Repaints when the cache reports progress, rate-limited to one repaint per view per 30 ms. A repaint covers only the union of the cached rectangles of visible clips using the affected key, never the whole clip area.
 - Failure (missing file, unreadable) is reported as a state the clip can show, not an exception.
 
@@ -89,7 +92,7 @@ Rendering:
 - Clips are painted by the clip area, not represented by one component each. Per-clip components exist only as accessibility proxies (see Accessibility).
 
 Layout:
-- Track headers on the left (name, colour; contents customisable by a component factory lambda for mute/solo/arm buttons). Time ruler on top. Clip area fills the rest.
+- Track headers on the left (name, colour; contents customisable by a component factory lambda for mute/solo/arm buttons). Header components exist only for visible tracks, kept in a pool and rebound to a different `TrackId` as tracks scroll in and out; the factory is called only when the pool needs another component, and a rebind callback lets custom contents update for the new track. Time ruler on top. Clip area fills the rest.
 - Track heights per track, with a global default. Vertical scroll for tracks; horizontal scroll for time.
 - Playhead drawn from `setPlayhead(samples)`; the view never plays audio. Only the old and new playhead strips are repainted. Optional follow mode (page or smooth scroll).
 - Optional loop range and markers drawn on the ruler.
@@ -108,7 +111,17 @@ Ruler:
 Clips:
 - Drawn as rounded blocks with name, colour, waveform, fades and gain line as supplied. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
 - Clip body is drawn by the view; a custom painter lambda may replace it per clip.
-- Painting is clipped to the visible range and culls clips narrower than a pixel.
+- Painting is clipped to the visible range. The gain line is drawn on a dB scale (look-and-feel range, default -60 to +12 dB).
+
+Level of detail:
+- Each clip is drawn at a tier chosen by its on-screen width (thresholds from the look and feel):
+  - **Full** (default ≥ 40 px): rounded, translucent body, outline, name, waveform, fades, gain line.
+  - **Reduced** (≥ 4 px): rounded body and outline, waveform; no name, fades or gain line.
+  - **Minimal** (≥ 1 px): opaque filled rectangle in the clip colour, no outline or waveform.
+  - **Coverage** (< 1 px): not drawn individually. The track's occupied spans (from `clipSpans` with `minGap` of one pixel's worth of samples) are filled as a single strip in the track colour, so densely packed short clips stay visible when zoomed out.
+- Waveforms are also skipped when the lane is shorter than the look-and-feel minimum height.
+- Hit testing and selection work on individual clips at every tier. A click in a coverage strip hits the topmost clip under the pointer, found by `clipsInRange` on a one-pixel range.
+- **Overview mode** (`setOverviewMode(true)`), for an overview strip: every track is drawn in coverage form only, with no per-clip queries, waveforms, headers or clip selection. The view draws a visible-range rectangle set by `setHighlightedRange`, and reports clicks and drags as time positions through a callback, so the application can move another view.
 
 Selection:
 - Clips (multi-select by click, Shift, Ctrl/Cmd, rubber-band), tracks (by header), and a time range (drag on the ruler). Selection is view state, reported through callbacks and held by id.
@@ -126,7 +139,7 @@ Keyboard:
 Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. Light and dark.
 
 Accessibility:
-- JUCE accessibility is component-based, so the clip area keeps a pool of invisible proxy components, one per visible clip, recycled on scroll and zoom. Each exposes name, track, time range and selection state. Accessibility focus never changes the selection, so a screen-reader user can browse a multi-selection without losing it. The press action selects the clip alone; the toggle action adds it to or removes it from the selection.
+- JUCE accessibility is component-based, so the clip area keeps a pool of proxy components, one per visible clip, recycled on scroll and zoom. Proxies are visible (JUCE leaves invisible components out of the accessibility tree) but paint nothing and pass all mouse events through (`setInterceptsMouseClicks(false, false)`). Each exposes name, track, time range and selection state. Accessibility focus never changes the selection, so a screen-reader user can browse a multi-selection without losing it. The press action selects the clip alone; the toggle action adds it to or removes it from the selection.
 - Tracks are exposed through their header components.
 - Off-screen clips are not exposed; they are reached by keyboard navigation, which scrolls them into view.
 - Selection changes are announced. Each platform to be tested manually.
@@ -137,7 +150,7 @@ Edits are requests to the model, never applied by the view. The model validates,
 - `moveClips(moves)` where each move is clip id, new track, new start
 - `trimClips(trims)` (start/end edge drags, adjusting offset). The view clamps trims so that `0 <= offset` and `offset + length <= source length` (an end edge can reach the source's last sample), with length at least 1 and start at least 0. A clip without a source length is clamped only at offset 0.
 - `splitClip(id, at)`, `deleteClips(ids)`, `duplicateClips(ids, offset)`
-- `setFades(id, in, out)`, `setGain(id, gain)`
+- `setFades(id, in, out)`, `setGain(id, gainDb)`
 - `addClip(track, start, source)` for drops from outside (file drag and drop)
 - `undo()`, `redo()`, `beginBatch()`, `endBatch()` as in juce-grid
 
@@ -148,7 +161,7 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 - Cost scales with what is visible, not with the timeline size.
 - Track and clip geometry cached per layout pass and invalidated by notifications.
 - Waveforms never read audio on the message thread. Peak drawing is O(pixels), not O(samples).
-- Targets (to confirm by benchmark): smooth scroll and zoom with 100 tracks and 20,000 clips, hour-long sources.
+- Targets (to confirm by benchmark): smooth scroll and zoom with 100 tracks and 20,000 clips, hour-long sources, at every zoom level from fully zoomed in to the whole timeline, with an overview strip of the same model open alongside.
 
 ## Threading
 
@@ -168,7 +181,7 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 
 1. Skeleton: modules, CMake, demo app, time mapping with tests. The CI workflow file is written but not run until a repository exists.
 2. jwaveform: PeakData, PeakBuilder, PeakCache, drawing; standalone demo.
-3. Timeline view: tracks, clips (plain blocks), ruler, virtual scrolling, zoom, playhead.
+3. Timeline view: tracks, clips (plain blocks), level-of-detail tiers and overview mode, ruler, virtual scrolling, zoom, playhead.
 4. Waveforms in clips, progressive loading, deep-zoom raw samples, clip fades and gain display.
 5. Selection, keyboard, accessibility, markers and loop range.
 6. First Windows and Linux CI run, fix portability issues.

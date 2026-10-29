@@ -22,3 +22,14 @@
 - **Accessibility focus is decoupled from selection.** Screen-reader browsing must not destroy a multi-selection; selection goes through press/toggle actions.
 - **Keyboard cursor can rest on a track.** Restores keyboard access to tracks and gives Up/Down a defined result when the adjacent track has no clip in view.
 - **Zoom keys match by character, not key code.** Key codes are layout-dependent; characters are not.
+
+## 2026-10-29 — Pre-implementation gaps
+
+- **Application-owned, shared `PeakCache`.** Views of one model must not build the same source twice; `shared_ptr` keeps lifetime simple.
+- **Accessibility proxies are visible, transparent and mouse-transparent.** JUCE omits invisible components from the accessibility tree.
+- **Optional `adjacentClip`.** `clipsInRange` returns draw order, so finding the next clip by start off screen could otherwise mean a full-track query; doubling windows are the fallback.
+- **Pooled track headers.** Headers are components; only visible tracks get one.
+- **Level-of-detail tiers instead of culling.** Culling sub-pixel clips made zoomed-out tracks look empty; a coverage strip shows them. Optional `clipSpans` lets the model answer coverage from its index.
+- **Explicit overview mode.** An overview shows the whole timeline, so it gets coverage-only drawing rather than relying on automatic tiers.
+- **Gain in dB.** Matches how users think about and edit gain; the view converts for drawing.
+- **Disk cache written temp-then-move.** No partial files after a crash or under concurrent access.
