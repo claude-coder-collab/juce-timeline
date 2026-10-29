@@ -22,7 +22,7 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **Track**: a lane holding clips. Overlapping clips on one track are allowed and drawn overlapping, in draw order (later on top), with the overlap visible: clip bodies are slightly translucent and each clip keeps its own outline, so the clip underneath can be seen. Hit testing picks the topmost clip.
 - **Draw order**: a per-track total order of clips defined by the model. It is the same whichever range is queried.
 - **Clip**: a span of time on a track, referring to a region of a source. Has a track, a start, a length of at least 1 sample, a source offset, a name and a colour. Clips lie within `[0, length()]` of the timeline. Optional display-only gain (in dB) and fades.
-- **Clip kind**: `audio` (the default) or `group`. A group clip stands for a group of clips the model keeps elsewhere; the view does not model or draw its contents. It has a span, name and colour like any clip but no source, so it never has a waveform, fades or gain line; its body uses a look-and-feel group style (e.g. a distinct outline and a group badge). Empty groups are drawn the same way. Selection, hit testing, level of detail, accessibility and edit requests treat it as a clip; what an edit means for its contents is the model's business.
+- **Clip kind**: `audio` (the default) or `group`. A group clip stands for a group of clips the model keeps elsewhere; the view does not model or draw its contents. It has a span, name and colour like any clip but no source, so it never has a waveform or fades; its body uses a look-and-feel group style (e.g. a distinct outline and a group badge). Empty groups are drawn the same way. Selection, hit testing, level of detail, accessibility and edit requests treat it as a clip; what an edit means for its contents is the model's business.
 - **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The view may scroll before 0 (pre-roll) but no clip starts there. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
 - **Source rate**: every source is at the timeline sample rate, so a clip's source offset and source length are in timeline samples, and a timeline position `p` inside a clip is source sample `sourceOffset + (p - start)`. Converting sources is the model's job. A waveform source whose sample rate differs is shown as a failure state (rate mismatch), not drawn.
 - **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`, 64-bit), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
@@ -111,9 +111,9 @@ Ruler:
 - Later formatters: samples, SMPTE timecode, bars and beats (needs a tempo map). A custom formatter lambda is accepted. Tick density adapts to zoom.
 
 Clips:
-- Drawn as rounded blocks with name, colour, waveform, fades and gain line as supplied. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
+- Drawn as rounded blocks with name, colour, waveform and fades as supplied. Clip gain scales the waveform but is not drawn as a line. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
 - Clip body is drawn by the view; a custom painter lambda may replace it per clip.
-- Painting is clipped to the visible range. The gain line is drawn on a dB scale (look-and-feel range, default -60 to +12 dB).
+- Painting is clipped to the visible range.
 
 Waveform zoom:
 - Each view has a waveform vertical scale, `setWaveformScale(factor)`, from 0.25× to 64× (default 1×), passed to the waveform drawing as its display scale. It affects drawing only: no peak data is rebuilt and the model is not told.
@@ -122,8 +122,8 @@ Waveform zoom:
 
 Level of detail:
 - Each clip is drawn at a tier chosen by its on-screen width (thresholds from the look and feel):
-  - **Full** (default ≥ 40 px): rounded, translucent body, outline, name, waveform, fades, gain line.
-  - **Reduced** (≥ 4 px): rounded body and outline, waveform; no name, fades or gain line.
+  - **Full** (default ≥ 40 px): rounded, translucent body, outline, name, waveform, fades.
+  - **Reduced** (≥ 4 px): rounded body and outline, waveform; no name or fades.
   - **Minimal** (≥ 1 px): opaque filled rectangle in the clip colour, no outline or waveform.
   - **Coverage** (< 1 px): not drawn individually. The track's occupied spans (from `clipSpans` with `minGap` of one pixel's worth of samples) are filled as a single strip in the track colour, so densely packed short clips stay visible when zoomed out.
 - Waveforms are also skipped when the lane is shorter than the look-and-feel minimum height.
@@ -179,7 +179,7 @@ Edits are requests to the model, never applied by the view. The model validates,
 - `moveClips(moves)` where each move is clip id, new track, new start
 - `trimClips(trims)` (start/end edge drags, adjusting offset). The view clamps trims so that `0 <= offset` and `offset + length <= source length` (an end edge can reach the source's last sample), with length at least 1 and start at least 0. A clip without a source length is clamped only at offset 0.
 - `splitClip(id, at)`, `deleteClips(ids)`, `duplicateClips(ids, offset)`
-- `setFades(id, in, out)`, `setGain(id, gainDb)`
+- `setFades(id, in, out)`
 - `addClip(track, start, source)` for drops from outside (file drag and drop)
 - `undo()`, `redo()`, `beginBatch()`, `endBatch()` as in juce-grid
 
@@ -211,11 +211,11 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 1. Skeleton: modules, CMake, demo app, time mapping with tests. The CI workflow file is written but not run until a repository exists.
 2. jwaveform: PeakData, PeakBuilder, PeakCache, drawing; standalone demo.
 3. Timeline view: tracks, clips (plain blocks), level-of-detail tiers and overview mode, ruler, virtual scrolling, zoom, playhead.
-4. Waveforms in clips, progressive loading, deep-zoom raw samples, clip fades and gain display.
+4. Waveforms in clips, progressive loading, deep-zoom raw samples, clip fades and gain scaling.
 5. Selection, keyboard, accessibility, markers and loop range.
 6. First Windows and Linux CI run, fix portability issues.
 7. Editing: move, trim, split, delete, with snapping.
-8. Editing: drag and drop in, duplicate, fades and gain handles, undo forwarding.
+8. Editing: drag and drop in, duplicate, fade handles, undo forwarding.
 
 ## Out of scope
 

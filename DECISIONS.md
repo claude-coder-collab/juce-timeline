@@ -49,3 +49,7 @@
 - **Object selection stays; only scroll and zoom follow Pro Tools.** Pro Tools' range-based selection was considered and declined.
 - **Group clip kind reserved, contents not modelled.** Leaves room for sessions with clip groups (including empty groups used as notes) without the view knowing about nesting.
 - **Peak density by physical pixels.** JUCE renders at physical resolution but the data density is ours to choose.
+
+## 2026-10-29 — No gain lines
+
+- **Gain lines and gain editing removed.** Out of scope. Clip gain remains model data that scales the drawn waveform.
