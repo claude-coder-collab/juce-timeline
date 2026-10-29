@@ -33,7 +33,7 @@ Same approach as juce-grid: a struct of `std::function` members, no inheritance,
 View pulls from the model (all required unless marked optional):
 - `trackIds()` → ordered list of `TrackId`
 - `trackInfo(TrackId)` → `std::optional<TrackInfo>`: name, colour, height hint (optional fields). Empty means the track does not exist.
-- `clipsInRange(TrackId, rangeStart, rangeEnd)` → ids of the clips on the track with `clip.start < rangeEnd && clip.start + clip.length > rangeStart`, in draw order. So a clip starting before the range but extending into it is included, and one ending exactly at `rangeStart` is not. The view always passes `0 <= rangeStart < rangeEnd <= length() + 1`, never sentinel extremes. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
+- `clipsInRange(TrackId, rangeStart, rangeEnd)` → ids of the clips on the track with `clip.start < rangeEnd && clip.start + clip.length > rangeStart`, in draw order. So a clip starting before the range but extending into it is included, and one ending exactly at `rangeStart` is not. The view always passes `0 <= rangeStart < rangeEnd <= length()`, never sentinel extremes. The model is expected to answer this without scanning the whole track (e.g. a sorted index or interval tree); the view never asks for all clips except for select-all.
 - `clipInfo(ClipId)` → `std::optional<ClipInfo>`: track, start, length, source offset, source length (optional), name, colour, gain, fade in, fade out, muted, optional `WaveformSource`. Empty means the clip does not exist. A reported length of 0 is a model error; the view treats it as 1.
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
@@ -113,7 +113,7 @@ Clips:
 Selection:
 - Clips (multi-select by click, Shift, Ctrl/Cmd, rubber-band), tracks (by header), and a time range (drag on the ruler). Selection is view state, reported through callbacks and held by id.
 - It survives model changes. On a clips-changed or tracks-changed notification the affected selected ids are re-queried, and on a full reset all selected ids are; ids whose info is empty are dropped.
-- Ctrl/Cmd+A selects all clips via `clipsInRange(track, 0, length() + 1)` on every track. This is the only full-size query.
+- Ctrl/Cmd+A selects all clips via `clipsInRange(track, 0, length())` on every track. This is the only full-size query.
 
 Keyboard:
 - The keyboard cursor is on a clip, on a track, or nowhere. Arrows move the cursor and select what it lands on, replacing the selection; Shift+arrow adds to it. The view scrolls to keep the cursor visible.
