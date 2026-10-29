@@ -26,7 +26,7 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **Clip kind**: `audio` (the default) or `group`. A group clip stands for a group of clips the model keeps elsewhere; the view does not model or draw its contents. It has a span, name and colour like any clip but no source, so it never has a waveform or fades; its body uses a look-and-feel group style (e.g. a distinct outline and a group badge). Empty groups are drawn the same way. Selection, hit testing, level of detail, accessibility and edit requests treat it as a clip; what an edit means for its contents is the model's business.
 - **Time unit**: signed 64-bit sample positions at a timeline sample rate supplied by the model. Timeline positions and clip lengths are in timeline samples. Sub-sample positions are not represented. The view may scroll before 0 (pre-roll) but no clip starts there. The default display is hours:minutes:seconds.milliseconds; SMPTE timecode and bars/beats come later (roadmap).
 - **Source rate**: every source is at the timeline sample rate, so a clip's source offset and source length are in timeline samples, and a timeline position `p` inside a clip is source sample `sourceOffset + (p - start)`. Converting sources is the model's job. A waveform source whose sample rate differs is shown as a failure state (rate mismatch), not drawn.
-- **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`, 64-bit), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
+- **Identity**: tracks and clips are identified by stable opaque ids (`TrackId`, `ClipId`: `enum class` over `uint64_t`, so they are distinct, comparable and hashable types), not indices, because clips move between tracks and reorder freely. Track order is the model's. Unlike juce-grid, nothing in the API is index-based except track order.
 
 ## Model communication
 
@@ -40,16 +40,18 @@ View pulls from the model (all required unless marked optional):
 - `sampleRate()`
 - `length()`: the timeline end in samples. The model tracks it; the view never derives it.
 - `adjacentClip(TrackId, ClipId, direction)` → the previous or next clip on the track in start order (ties by draw order), or empty at either end. Used by Left/Right.
-- `clipSpans(TrackId, rangeStart, rangeEnd, minGap)` → the occupied spans of the track within the range, merged where clips overlap or the gap between them is smaller than `minGap` samples, sorted by start. Lets coarse drawing (see Level of detail) avoid listing every clip.
+- `clipSpans(TrackId, rangeStart, rangeEnd, minGap)` (optional) → the occupied spans of the track within the range, merged where clips overlap or the gap between them is smaller than `minGap` samples, sorted by start. Lets coarse drawing (see Level of detail) avoid querying every clip; without it the view computes spans from `clipsInRange` and `clipInfo`. `mergeSpans(spans, minGap)` (sorts, then merges overlapping, touching and closer-than-`minGap` spans) helps implement it.
+- `notifier`: a `TimelineNotifier*`, or null (then the application calls `refresh()` after changes).
+- `adjacentClip` is optional. A model missing any other required callback shows as empty.
 - Optional extras for later: markers, loop range.
 
-Reads happen only for visible tracks and clips, plus selected ids when checking they still exist.
+Reads happen only for visible clips, plus selected ids when checking they still exist. `trackIds` and `trackInfo` for every track are read on binding, on tracks changed and on full reset (the layout needs every track's height hint). The view caches, per visible track, the clip ids for the visible range extended by half a view width on each side, and the `ClipInfo` of those clips; scrolling within that range and repainting make no model calls. Changing zoom re-queries.
 
 Model pushes to the view: a `TimelineNotifier` owned by the model, one `changed(Change)` call, always on the message thread. `Change` is a variant: tracks changed (added, removed, reordered), clips changed (a set of ids, covering add, remove, move and property edits), markers changed, or full reset. A change of `sampleRate()` or `length()` is notified as a full reset. No dirty flag.
 
-On clips changed, the view re-queries each id. It repaints the clip's old rectangle (from its per-layout geometry cache, so a clip that was off screen needs no repaint) and its new one. An id whose `clipInfo` is empty is treated as removed. Because `ClipInfo` carries no draw-order position, every track touched by a changed id (its old track from the cache and its new one from `clipInfo`) has `clipsInRange` called again for the visible range, refreshing the cached draw order used for painting and hit testing.
+On clips changed, the view re-queries each id (in overview mode it skips this and recomputes coverage instead). It repaints the clip's old rectangle (from its per-layout geometry cache, so a clip that was off screen needs no repaint) and its new one. An id whose `clipInfo` is empty is treated as removed. Because `ClipInfo` carries no draw-order position, every track touched by a changed id (its old track from the cache and its new one from `clipInfo`) has `clipsInRange` called again for the visible range, refreshing the cached draw order used for painting and hit testing.
 
-Lifetime: as juce-grid. The view never owns the model; a destroyed notifier detaches its views.
+Lifetime: as juce-grid. `TimelineNotifier` has a `Listener` interface (`modelChanged`, `notifierDestroyed`), which `Timeline` implements privately. The view never owns the model; `setModel` subscribes to `model.notifier` and unsubscribes from the previous one; a destroyed notifier detaches its views, which then show as empty.
 
 Multiple views of one model are supported (e.g. an overview strip and a main view). Each view has its own zoom, scroll, selection and track heights.
 
@@ -94,28 +96,33 @@ Drawing:
 
 Rendering:
 - The view is not built on `juce::Viewport`. Scrolling is virtual: the view state is a `double` samples-per-pixel and a start position made of an `int64` sample plus a `double` fraction in [0, 1), driven by `juce::ScrollBar`s. The fraction keeps zoom anchoring exact at deep zoom, where one sample spans many pixels. A content-sized component would exceed `int` range at deep zoom on long timelines.
-- Pixel positions are computed relative to the view start in `double`, and clamped to the visible area plus a small margin before conversion to `float`, so graphics coordinates stay small.
+- Pixel positions are computed relative to the view start in `double`, and clamped to the visible area plus a small margin (8 px for clips) before conversion to `float`, so graphics coordinates stay small. `ClipPaint` tells the look and feel whether a clip was cut at either edge.
+- Horizontal scroll: the left edge may go from 10% of the view span before 0 to 10% of the view span past the point where the timeline end (at least 10 s) meets the right edge. So zoom to fit leaves a little play either way.
+- The `Timeline` is split into child components: a `Ruler` on top (right of the header column), a header column, the clip area, and a horizontal and a vertical `juce::ScrollBar` (always shown). Wheel and pinch events from any child reach the `Timeline`, which handles them; the `Timeline` takes keyboard focus when its ruler or clip area is clicked.
 - Clips are painted by the clip area, not represented by one component each. Per-clip components exist only as accessibility proxies (see Accessibility).
 
 Layout:
-- Track headers on the left (name, colour; contents customisable by a component factory lambda for mute/solo/arm buttons). Header components exist only for visible tracks, kept in a pool and rebound to a different `TrackId` as tracks scroll in and out; the factory is called only when the pool needs another component, and a rebind callback lets custom contents update for the new track. Time ruler on top. Clip area fills the rest.
+- Track headers on the left (name, colour; contents customisable by a component factory lambda for mute/solo/arm buttons). Headers are `TrackHeader` components (or subclasses): `setTrackHeaderFactory(std::function<std::unique_ptr<TrackHeader>()>)`. Header components exist only for visible tracks, kept in a pool and rebound to a different `TrackId` as tracks scroll in and out; headers still on screen keep their track. The factory is called only when the pool needs another component; the virtual `trackChanged()` is the rebind callback, called when the bound track or its info changes, so custom contents can update. The default header is drawn by the look and feel. Time ruler on top. Clip area fills the rest.
+- Track heights: `getTrackHeight(id)` is the height set in this view (`setTrackHeight`, `stepTrackHeights`), else the model's height hint, else the default (`setDefaultTrackHeight`, which also clears set heights; else the look-and-feel default, 72 px). Heights are kept by id across track changes.
 - Track heights per track, with a global default. Keyboard height changes step through a look-and-feel list of heights (default 24, 32, 48, 72, 112, 176, 272 px); a track between steps moves to the next step in that direction. Vertical scroll for tracks; horizontal scroll for time.
-- Playhead drawn from `setPlayhead(samples)`; the view never plays audio. Only the old and new playhead strips are repainted. Optional page follow mode: when the playhead leaves the visible range, the view jumps so the playhead is at its left edge. There is no smooth-scroll follow.
+- Playhead drawn from `setPlayhead(samples)`; the view never plays audio. Only the old and new playhead strips are repainted. Optional page follow mode (`setFollowPlayhead`): when the playhead leaves the visible range, the view jumps so the playhead is at its left edge (as far as the scroll range allows). There is no smooth-scroll follow.
+- Clicks and drags on the ruler report the nearest sample position, clamped to `[0, length()]`, through `onTimeClicked`; the application decides what to do (the demo moves the playhead). `onViewChanged` reports zoom and scroll changes.
 - Optional loop range and markers drawn on the ruler.
 
 Zoom and scroll:
 - Zoom is samples-per-pixel (`double`; below 1 at deep zoom).
 - **Edit cursor**: the start of the time selection if there is one, otherwise the playhead. It is the anchor for zooms that are not anchored at the pointer: the anchor's screen position stays fixed, or if it is off screen, the view centres on it.
 - Bindings follow Pro Tools defaults (see Input bindings). Trackpad horizontal deltas scroll horizontally directly; pinch (`mouseMagnify`) zooms around the pointer.
-- API: `setVisibleRange`, `zoomToFit`, `zoomToSelection`.
-- Limits: from 1/16 samples per pixel (16 px per sample; until deep zoom lands in milestone 6, the level-0 block size per physical pixel) up to the whole timeline fitting in the view. For zoom-out purposes the timeline is at least 10 seconds long, so an empty timeline still has a range.
+- API: `setMapping` (clamped to limits and scroll range), `setVisibleRange`, `zoomToFit`, `zoomAtEditCursor(steps, factor)`, `scrollTo`, `setTrackScroll`, and `zoomToSelection` (milestone 5). Home and End scroll to the timeline start and end.
+- Limits: from 1/16 samples per pixel (16 px per sample) up to the whole timeline fitting in the view. While clips have no waveforms (milestone 3), the full range is available; from milestone 4 until deep zoom lands in milestone 6, the deepest zoom is the level-0 block size per physical pixel. For zoom-out purposes the timeline is at least 10 seconds long, so an empty timeline still has a range.
 
 Ruler:
-- Default formatter: `h:mm:ss.mmm`, dropping leading zero units where zoom allows, and adding sub-millisecond digits (down to microseconds) when ticks are closer than a millisecond. At sample-level zoom, minor ticks mark individual samples. Negative positions are prefixed with `-`.
-- A custom formatter lambda replaces the default (applications supply samples, timecode or bars and beats this way). Tick density adapts to zoom.
+- Ticks (`ruler::scaleFor`, `ruler::ticksFor` in `core/`): major ticks at the smallest round spacing at least 90 px apart: 1, 2 or 5 × 10^n seconds from 1 µs to 0.5 s; 1, 2, 5, 10, 15 and 30 seconds and minutes; 1, 2 and 5 × 10^n hours. Minor ticks subdivide a major spacing (by 10, 5, 4, 3, 2 or 6 as suits the spacing, the finest at least 6 px apart). At sample-level zoom (a sample at least 6 px wide), minor ticks mark individual samples. Tick positions are fractional samples.
+- Default formatter (`ruler::formatTime`): `m:ss`, or `h:mm:ss` from an hour, plus milliseconds when the major spacing is not a whole number of seconds, and more digits (down to microseconds) when it is under a millisecond. Negative positions are prefixed with `-`.
+- A custom formatter, `setRulerFormatter(std::function<String(double position, double sampleRate, double majorSpacingSamples)>)`, replaces the labels (applications supply samples, timecode or bars and beats this way); tick positions stay time-based.
 
 Clips:
-- Drawn as rounded blocks with name, colour, waveform and fades as supplied. Clip gain scales the waveform but is not drawn as a line. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
+- Drawn as rounded blocks with name, colour, waveform and fades as supplied. The colour is the clip's, else its track's, else `clipColourId`. Group clips get a thicker, lighter outline and a two-square badge. Clip gain scales the waveform but is not drawn as a line. Fades are linear in v1, drawn as an overlay shape and applied to the waveform envelope. Muted clips are dimmed.
 - Custom clip drawing goes through the look and feel; there is no per-clip painter lambda.
 - Painting is clipped to the visible range.
 
@@ -131,8 +138,10 @@ Level of detail:
   - **Minimal** (≥ 1 px): opaque filled rectangle in the clip colour, no outline or waveform.
   - **Coverage** (< 1 px): not drawn individually. The track's occupied spans (from `clipSpans` with `minGap` of one pixel's worth of samples) are filled as a single strip in the track colour, so densely packed short clips stay visible when zoomed out.
 - Waveforms are also skipped when the lane is shorter than the look-and-feel minimum height.
+- Coverage strips for a track's sub-pixel clips are their timeline ranges merged with `minGap` of one pixel's worth of samples, drawn behind the track's other clips.
+- **Dense tracks**: when a track has more than one clip per 2 px in its queried range, the view queries no `ClipInfo` for it and draws the whole track as coverage from `clipSpans`. At that density nearly every clip is under a few pixels wide.
 - Hit testing and selection work on individual clips at every tier. A click in a coverage strip hits the topmost clip under the pointer, found by `clipsInRange` on a one-pixel range.
-- **Overview mode** (`setOverviewMode(true)`), for an overview strip: every track is drawn in coverage form only, with no per-clip queries, waveforms, headers or clip selection. The view draws a visible-range rectangle set by `setHighlightedRange`, and reports clicks and drags as time positions through a callback, so the application can move another view.
+- **Overview mode** (`setOverviewMode(true)`), for an overview strip: the whole timeline (at least 10 s) across the full width, with every track squeezed to an equal share of the height, drawn in coverage form only (`clipSpans` over the whole timeline, cached until the width or model changes), with no per-clip queries, waveforms, headers, ruler, scroll bars, zoom or clip selection. The view draws the playhead and a visible-range rectangle set by `setHighlightedRange`, and reports clicks and drags as time positions through `onTimeClicked`, so the application can move another view.
 
 Selection:
 - Selection is object-based (clips and tracks), not Pro Tools' range-on-tracks model; only scrolling and zooming follow Pro Tools.
@@ -175,6 +184,8 @@ Input bindings:
 - macOS assigns Control + Up/Down to Mission Control and App Exposé by default, so the app never receives them unless the user disables those shortcuts (as Pro Tools users usually do). The README says so.
 
 Look and feel: all colours and metrics through a `LookAndFeel` extension class with defaults, following JUCE conventions. The modules do not follow the system light or dark appearance; the host application chooses the colour scheme.
+- `TimelineLookAndFeelMethods`: virtual methods with default implementations, so a host LookAndFeel also derives from it and overrides what it needs; a look and feel that does not derive from it gets the defaults. Methods: `getTimelineMetrics` (ruler height 28, header width 160, scroll bar 12, default track height 72, track height steps, detail thresholds, clip inset 1 px), `drawTimelineLane`, `drawTimelineClip(ClipPaint)`, `drawTimelineCoverage`, `drawTimelineRuler(marks)`, `drawTimelinePlayhead` (clip area and ruler), `drawTimelineHighlight`, `drawTimelineTrackHeader`.
+- `Timeline::ColourIds` (`0x2a52000`–`0x2a5200b`): background, lane, separator, header background, header text, ruler background, ruler text, clip (default clip colour), clip text, clip outline, playhead, highlight. Each resolves through the timeline, its ancestors and the look and feel, then falls back to blends of `ResizableWindow::backgroundColourId` and `Label::textColourId`, `Slider::thumbColourId` (clip, highlight), and `TextEditor::focusedOutlineColourId` (playhead).
 
 Accessibility:
 - JUCE accessibility is component-based, so the clip area keeps a pool of proxy components, one per visible clip, recycled on scroll and zoom. Proxies are visible (JUCE leaves invisible components out of the accessibility tree) but paint nothing and pass all mouse events through (`setInterceptsMouseClicks(false, false)`). Each exposes name, track, time range and selection state. Accessibility focus never changes the selection, so a screen-reader user can browse a multi-selection without losing it. The press action selects the clip alone; the toggle action adds it to or removes it from the selection.
@@ -211,7 +222,7 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 
 - `core/`: time mapping (`TimeMapping` for samples ↔ pixels, `ZoomLimits`, `ClipTiming` for timeline ↔ source positions), ruler tick generation and formatting, hit testing, snapping, selection, keyboard navigation order, `Change` handling. No component dependencies where possible.
 - `component/`: `Timeline`, `TrackHeader`, `Ruler`, `ClipArea`, accessibility proxies and friends.
-- `demo/timeline/`: the timeline app (synthetic clips and real files, and a stress-test mode, as the view grows).
+- `demo/timeline/`: the timeline app: a vector-backed model (`DemoModel`, sorted per-track index) with scenarios (16 tracks over an hour, a 100-track 20,000-clip stress test, a 2-second timeline for sample-level zoom, empty tracks), random clip edits and track add/remove that go through the notifier, playback with page follow, a time or samples ruler, and an overview strip moving the main view. `--scenario <n>`, `--visible <start s> <end s>` and `--snapshot <png>` serve visual checks. Real files come with waveforms in milestone 4.
 - `demo/waveform/`: the standalone jwaveform app: a synthetic hour-long stereo source (optionally slow to build), file open and drag and drop, a main view and an overview strip sharing one cache, and controls for channel mode, gain, fades and waveform zoom. `--snapshot <png>` waits for the build, saves a picture of the window and quits.
 - `tests/`: Catch2, plus a module check that builds both modules through `juce_add_module`; component tests under a headless message manager where needed. Include partial-`PeakData` reads concurrent with a build under TSan.
 - Docs per the project convention: SPEC.md (this file), DECISIONS.md, README.md.

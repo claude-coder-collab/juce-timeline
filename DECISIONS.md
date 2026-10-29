@@ -89,3 +89,17 @@
 - **Keys matched by key code, not typed character.** Option changes the typed character on macOS (Option + A types å), which made the typed-character rule unusable for Option bindings. JUCE's key code is the layout's character without modifiers, so layout independence is kept.
 - **Option/Alt + Shift + wheel up makes waveforms smaller.** Requested direction.
 - **No light/dark appearance following.** The modules are embedded in host applications, which decide the colour scheme.
+
+## 2026-10-29 — Milestone 3
+
+- **Ids are `enum class` types.** Distinct, hashable and free to compare, with no wrapper code; a `TrackId` cannot be passed as a `ClipId`.
+- **`clipSpans` is optional.** Small models can skip it; the view falls back to `clipsInRange` and `clipInfo`. `mergeSpans` makes it a few lines for models that have it.
+- **All track infos are read on track changes.** The layout needs every track's height hint; tracks number in the hundreds at most, unlike clips.
+- **Dense tracks skip per-clip queries.** Above one clip per 2 px, nearly every clip would be coverage or minimal anyway, and querying 20,000 `ClipInfo`s per zoom step is what the spans callback exists to avoid.
+- **Clip ids are cached for the visible range plus half a view either side.** Small scrolls and repaints make no model calls; zoom re-queries.
+- **Headers are `TrackHeader` subclasses, with `trackChanged()` as the rebind callback.** One factory returning a component that knows how to rebind is simpler than a factory plus a separate callback.
+- **Look and feel methods have default bodies.** A host look and feel derives from `TimelineLookAndFeelMethods` and overrides only what it needs, instead of implementing every method as JUCE's pure-virtual convention would require.
+- **Horizontal overscroll of 10% each side.** Allows pre-roll before 0 and a little room past the end without letting the timeline scroll away.
+- **Full zoom range while clips have no waveforms.** The level-0 limit exists for waveform sharpness; it applies from milestone 4.
+- **Ruler clicks report positions; the view does not move the playhead itself.** The playhead belongs to the application's transport.
+- **Home/End in `keys::actionFor`.** All key bindings stay in one tested place.

@@ -314,6 +314,8 @@ bool WaveformDemo::keyPressed(const juce::KeyPress& key)
         case jtimeline::KeyAction::trackTaller:
         case jtimeline::KeyAction::trackShorter:
         case jtimeline::KeyAction::selectAll:
+        case jtimeline::KeyAction::scrollToStart:
+        case jtimeline::KeyAction::scrollToEnd:
             break;
     }
     return false;

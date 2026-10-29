@@ -32,9 +32,13 @@ public:
     [[nodiscard]] SamplePosition getStartSample() const { return startSample; }
     /** Returns how far past getStartSample() the left edge lies, in [0, 1). */
     [[nodiscard]] double getStartFraction() const { return startFraction; }
+    /** Returns the left edge as a fractional sample position, less precise than the sample and fraction far from 0. */
+    [[nodiscard]] double getStartPosition() const { return static_cast<double>(startSample) + startFraction; }
 
     /** Returns the pixel position of a sample position's left edge. */
     [[nodiscard]] double toPixel(SamplePosition position) const;
+    /** Returns the pixel position of a fractional sample position. */
+    [[nodiscard]] double toPixelAt(double position) const;
     /** Returns the width in pixels of a number of samples. */
     [[nodiscard]] double toPixelLength(SamplePosition length) const;
     /** Returns the sample under a pixel position: the sample whose span contains it. */
@@ -60,6 +64,8 @@ public:
     [[nodiscard]] TimeMapping zoomedAroundSample(double newSamplesPerPixel, SamplePosition anchor, double width) const;
     /** Returns this mapping scrolled so that the view content moves left by the given pixels. */
     [[nodiscard]] TimeMapping scrolledBy(double pixels) const;
+    /** Returns this mapping with its left edge at a fractional sample position. */
+    [[nodiscard]] TimeMapping withStartPosition(double position) const;
     /** Returns this mapping scrolled so that the sample position's left edge is at the pixel. */
     [[nodiscard]] TimeMapping withSampleAt(SamplePosition position, double pixel) const;
 

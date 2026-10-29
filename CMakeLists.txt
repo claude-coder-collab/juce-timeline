@@ -47,9 +47,17 @@ jtimeline_configure_target(jwaveform_static)
 
 add_library(jtimeline_static STATIC
     modules/jtimeline/core/jtimeline_KeyInput.cpp
+    modules/jtimeline/core/jtimeline_RulerTicks.cpp
     modules/jtimeline/core/jtimeline_TimeMapping.cpp
+    modules/jtimeline/core/jtimeline_TimelineModel.cpp
+    modules/jtimeline/core/jtimeline_TimelineNotifier.cpp
+    modules/jtimeline/core/jtimeline_TrackLayout.cpp
     modules/jtimeline/core/jtimeline_WheelInput.cpp
-    modules/jtimeline/component/jtimeline_JuceInput.cpp)
+    modules/jtimeline/component/jtimeline_JuceInput.cpp
+    modules/jtimeline/component/jtimeline_Timeline.cpp
+    modules/jtimeline/component/jtimeline_TimelineLookAndFeel.cpp
+    modules/jtimeline/component/jtimeline_TimelineParts.cpp
+    modules/jtimeline/component/jtimeline_TrackHeader.cpp)
 add_library(jtimeline::jtimeline ALIAS jtimeline_static)
 target_link_libraries(jtimeline_static PUBLIC jtimeline::jwaveform)
 jtimeline_configure_target(jtimeline_static)

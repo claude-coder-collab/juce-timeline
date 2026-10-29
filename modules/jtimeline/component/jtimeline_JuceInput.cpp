@@ -27,6 +27,10 @@ KeyInput keyInputFrom(const juce::KeyPress& key)
         input.named = KeyInput::Named::up;
     else if (code == juce::KeyPress::downKey)
         input.named = KeyInput::Named::down;
+    else if (code == juce::KeyPress::homeKey)
+        input.named = KeyInput::Named::home;
+    else if (code == juce::KeyPress::endKey)
+        input.named = KeyInput::Named::end;
     else if (code > 0)
         input.character = static_cast<char32_t>(code);
     return input;
