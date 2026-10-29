@@ -1,0 +1,7 @@
+build/
+dist/
+.venv/
+__pycache__/
+.cache/
+.DS_Store
+LOCAL.md

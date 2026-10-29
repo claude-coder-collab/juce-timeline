@@ -8,6 +8,7 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 - **jtimeline**: the timeline view. Depends on `jwaveform` and `juce_gui_basics` (a hard dependency: `ClipInfo` carries jwaveform types). A clip with no waveform source draws as a plain block.
 - Module folders are `modules/jwaveform` and `modules/jtimeline`, each with an umbrella header and source named after the folder (`jwaveform.h`, `jwaveform.cpp`), as JUCE requires.
 - Both: C++23 minimum, same conventions as juce-grid (`core/` for non-GUI logic, a component folder, one umbrella header per module).
+- Shared value types live in jwaveform and are aliased into `jtimeline`: `SamplePosition` (`int64`) and `SampleRange` (half-open `[start, end)`).
 
 ## Platforms and CI
 
@@ -79,7 +80,7 @@ Deep zoom (milestone 6):
 - With raw samples, the waveform draws as a line through the samples, with a dot per sample once samples are several pixels apart.
 
 Drawing:
-- `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the level nearest one peak per physical pixel (logical width × `Graphics::getInternalContext().getPhysicalPixelScaleFactor()`), so waveforms stay sharp on high-DPI displays; cost is O(physical pixels).
+- `WaveformView`: a lightweight component or free draw function that paints a source sample range of a `PeakData` into a rectangle. Drawing picks the coarsest level that still has at least one peak per physical pixel (logical width × `Graphics::getInternalContext().getPhysicalPixelScaleFactor()`), so waveforms stay sharp on high-DPI displays; cost is O(physical pixels).
 - Channel modes: stacked (one lane per channel), or combined (one lane showing the min of the mins and the max of the maxes across channels). There is no summed mode, as a sum can't be derived from min/max pairs. Stacked falls back to combined when a lane would be shorter than a look-and-feel minimum height (default 12 px).
 - A vertical display scale (linear factor, default 1), separate from gain: it multiplies amplitudes. Amplitudes beyond the lane are clamped to its edge.
 - Optional gain scaling (gain in dB, converted to linear for drawing) and gain envelope (fade curves multiplied in, so the waveform shrinks through a fade), colours from the look and feel. Amplitude is linear.
@@ -89,7 +90,7 @@ Drawing:
 ## View behaviour (read-only, v1)
 
 Rendering:
-- The view is not built on `juce::Viewport`. Scrolling is virtual: the view state is a `double` samples-per-pixel and an `int64` start position, driven by `juce::ScrollBar`s. A content-sized component would exceed `int` range at deep zoom on long timelines.
+- The view is not built on `juce::Viewport`. Scrolling is virtual: the view state is a `double` samples-per-pixel and a start position made of an `int64` sample plus a `double` fraction in [0, 1), driven by `juce::ScrollBar`s. The fraction keeps zoom anchoring exact at deep zoom, where one sample spans many pixels. A content-sized component would exceed `int` range at deep zoom on long timelines.
 - Pixel positions are computed relative to the view start in `double`, and clamped to the visible area plus a small margin before conversion to `float`, so graphics coordinates stay small.
 - Clips are painted by the clip area, not represented by one component each. Per-clip components exist only as accessibility proxies (see Accessibility).
 
@@ -200,10 +201,10 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 
 ## Architecture and testing
 
-- `core/`: time mapping (samples ↔ pixels, timeline ↔ source positions), ruler tick generation and formatting, hit testing, snapping, selection, keyboard navigation order, `Change` handling. No component dependencies where possible.
+- `core/`: time mapping (`TimeMapping` for samples ↔ pixels, `ZoomLimits`, `ClipTiming` for timeline ↔ source positions), ruler tick generation and formatting, hit testing, snapping, selection, keyboard navigation order, `Change` handling. No component dependencies where possible.
 - `component/`: `Timeline`, `TrackHeader`, `Ruler`, `ClipArea`, accessibility proxies and friends.
 - `demo/`: an app with synthetic clips and real files, and a stress-test mode.
-- `tests/`: Catch2; component tests under a headless message manager where needed. Include partial-`PeakData` reads concurrent with a build under TSan.
+- `tests/`: Catch2, plus a module check that builds both modules through `juce_add_module`; component tests under a headless message manager where needed. Include partial-`PeakData` reads concurrent with a build under TSan.
 - Docs per the project convention: SPEC.md (this file), DECISIONS.md, README.md.
 
 ## Milestones
