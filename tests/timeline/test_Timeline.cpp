@@ -1,3 +1,4 @@
+#include "../waveform/SyntheticReader.h"
 #include "TestModel.h"
 
 #include <catch2/catch_approx.hpp>
@@ -16,6 +17,49 @@ juce::Image paint(Timeline& timeline)
 {
     return timeline.createComponentSnapshot(timeline.getLocalBounds(), true, 1.0f);
 }
+
+bool runUntil(const std::function<bool()>& done, int timeoutMs = 10'000)
+{
+    const auto end = juce::Time::getMillisecondCounter() + static_cast<juce::uint32>(timeoutMs);
+    while (!done())
+    {
+        if (juce::Time::getMillisecondCounter() > end)
+            return false;
+        juce::MessageManager::getInstance()->runDispatchLoopUntil(5);
+    }
+    return true;
+}
+
+std::shared_ptr<const jwaveform::PeakData> readyPeaks(double rate, jtimeline::SamplePosition frames)
+{
+    auto data = std::make_shared<jwaveform::PeakData>(rate, frames, 1);
+    const std::vector<float> samples(static_cast<std::size_t>(frames), 0.5f);
+    const std::array channels{ samples.data() };
+    data->append(channels, static_cast<int>(frames));
+    data->complete();
+    return data;
+}
+
+class RecordingLookAndFeel final : public juce::LookAndFeel_V4, public jtimeline::TimelineLookAndFeelMethods
+{
+public:
+    struct Record
+    {
+        jtimeline::ClipId id{};
+        jtimeline::WaveformStatus status = jtimeline::WaveformStatus::none;
+        double sourceStart = 0.0;
+        double sourceEnd = 0.0;
+        bool hasPeaks = false;
+    };
+
+    void drawTimelineClip(juce::Graphics& g, const Timeline& timeline, const jtimeline::ClipPaint& clip) override
+    {
+        records[clip.id] = { .id = clip.id, .status = clip.waveform.status, .sourceStart = clip.waveform.sourceStart, .sourceEnd = clip.waveform.sourceEnd, .hasPeaks = clip.waveform.peaks != nullptr };
+        TimelineLookAndFeelMethods::drawTimelineClip(g, timeline, clip);
+    }
+
+    std::map<jtimeline::ClipId, Record> records;
+};
 
 class CountingHeader final : public jtimeline::TrackHeader
 {
@@ -48,7 +92,10 @@ TEST_CASE("Timeline fits the whole timeline and clamps zoom", "[timeline]")
     CHECK(timeline.getVisibleRange().start == 0);
 
     timeline.setMapping(jtimeline::TimeMapping{ 1.0e-6, 0 });
-    CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(1.0 / 16.0));
+    const auto deepest = timeline.getZoomLimits().minSamplesPerPixel;
+    CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(deepest));
+    CHECK(deepest <= 64.0);
+    CHECK(deepest >= 16.0);
     timeline.setMapping(jtimeline::TimeMapping{ 1.0e12, 0 });
     CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(static_cast<double>(model.length) / 1000.0));
 
@@ -244,4 +291,61 @@ TEST_CASE("Timeline waveform scale is clamped and reported", "[timeline]")
     timeline.setTrackWaveformScale(TrackId{ 3 }, std::nullopt);
     CHECK(timeline.getWaveformScaleFor(TrackId{ 3 }) == 0.25);
     CHECK(changes == 4);
+}
+
+TEST_CASE("Timeline draws clip waveforms and releases them when not drawn", "[timeline][waveform]")
+{
+    const juce::ScopedJuceInitialiser_GUI juce;
+    TestModel model;
+    const auto track = model.addTrack();
+    const auto ready = model.addClip(track, second, 2 * second);
+    const auto mismatch = model.addClip(track, 4 * second, second);
+    const auto missing = model.addClip(track, 6 * second, second);
+    const auto built = model.addClip(track, 8 * second, second);
+    const auto group = model.addClip(track, 9 * second, second);
+    model.clips[ready].sourceOffset = 10 * second;
+    model.clips[ready].source = jwaveform::WaveformSource{ .key = {}, .createReader = {}, .peaks = readyPeaks(48000.0, 20 * second) };
+    model.clips[mismatch].source = jwaveform::WaveformSource{ .key = {}, .createReader = {}, .peaks = readyPeaks(44100.0, second) };
+    model.clips[missing].source = jwaveform::WaveformSource{ .key = "missing", .createReader = [] { return std::unique_ptr<juce::AudioFormatReader>{}; }, .peaks = nullptr };
+    const auto synthetic = jwaveform::WaveformSource{ .key = "synthetic", .createReader = [] { return std::make_unique<SyntheticReader>(48000, 1, [](int, std::int64_t position) { return std::sin(static_cast<float>(position) * 0.01f); }); }, .peaks = nullptr };
+    model.clips[built].source = synthetic;
+    model.clips[group].kind = jtimeline::ClipKind::group;
+    model.clips[group].source = synthetic;
+
+    RecordingLookAndFeel lookAndFeel;
+    Timeline timeline;
+    timeline.setLookAndFeel(&lookAndFeel);
+    timeline.setBounds(0, 0, 1172, 300);
+    timeline.setModel(model.bind());
+    timeline.setVisibleRange({ .start = 0, .end = 10 * second });
+    paint(timeline);
+    CHECK(lookAndFeel.records[ready].status == jtimeline::WaveformStatus::ready);
+    CHECK(lookAndFeel.records[ready].sourceStart == Approx(10.0 * second));
+    CHECK(lookAndFeel.records[ready].sourceEnd == Approx(12.0 * second));
+    CHECK(lookAndFeel.records[mismatch].status == jtimeline::WaveformStatus::rateMismatch);
+    CHECK_FALSE(lookAndFeel.records[mismatch].hasPeaks);
+    CHECK(lookAndFeel.records[missing].status == jtimeline::WaveformStatus::none);
+    CHECK(lookAndFeel.records[group].status == jtimeline::WaveformStatus::none);
+
+    const auto cache = std::make_shared<jwaveform::PeakCache>();
+    timeline.setPeakCache(cache);
+    paint(timeline);
+    CHECK(cache->getNumEntries() == 2);
+    REQUIRE(runUntil([&] {
+        paint(timeline);
+        return lookAndFeel.records[missing].status == jtimeline::WaveformStatus::cannotOpen && lookAndFeel.records[built].status == jtimeline::WaveformStatus::ready;
+    }));
+    CHECK(lookAndFeel.records[built].hasPeaks);
+
+    timeline.setTrackHeight(track, 8);
+    lookAndFeel.records.clear();
+    paint(timeline);
+    CHECK(lookAndFeel.records[built].status == jtimeline::WaveformStatus::none);
+    cache->setMemoryLimit(0);
+    CHECK(cache->getNumEntries() == 0);
+
+    timeline.setMapping(jtimeline::TimeMapping{ 1.0e-6, 0 });
+    CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(timeline.getZoomLimits().minSamplesPerPixel));
+    CHECK(timeline.getZoomLimits().minSamplesPerPixel <= static_cast<double>(cache->getSamplesPerPeak()));
+    timeline.setLookAndFeel(nullptr);
 }

@@ -142,6 +142,8 @@ public:
     [[nodiscard]] std::size_t getNumEntries() const;
     /** Returns true while any build is running. */
     [[nodiscard]] bool isBuilding() const;
+    /** Returns the level-0 resolution of the peaks this cache builds. */
+    [[nodiscard]] int getSamplesPerPeak() const;
 
 private:
     std::shared_ptr<detail::PeakCacheImpl> impl;

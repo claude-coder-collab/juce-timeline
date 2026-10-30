@@ -3,6 +3,10 @@
 #include "jtimeline_Timeline.h"
 #include "jtimeline_TrackHeader.h"
 
+#include <jwaveform/view/jwaveform_WaveformDrawing.h>
+
+#include <algorithm>
+
 namespace jtimeline
 {
 
@@ -60,6 +64,18 @@ void TimelineLookAndFeelMethods::drawTimelineClip(juce::Graphics& g, const Timel
     const auto body = clip.bounds.reduced(0.5f, 0.5f);
     g.setColour(clip.colour.withMultipliedAlpha(bodyAlpha * dim));
     g.fillRoundedRectangle(body, cornerRadius);
+
+    const auto named = clip.tier == ClipTier::full && body.getHeight() >= nameHeight && info.name.isNotEmpty();
+    if (clip.waveform.status != WaveformStatus::none)
+    {
+        auto area = juce::Rectangle<float>::leftTopRightBottom(clip.bounds.getX(), body.getY() + 1.0f, clip.bounds.getRight(), body.getBottom() - 1.0f);
+        if (named && area.getHeight() - nameHeight >= getTimelineMetrics(timeline).minWaveformHeight)
+            area.removeFromTop(nameHeight);
+        drawTimelineClipWaveform(g, timeline, clip, area);
+    }
+    if (clip.tier == ClipTier::full && !group)
+        drawTimelineClipFades(g, timeline, clip, body);
+
     const auto outline = timeline.resolveColour(Timeline::clipOutlineColourId);
     g.setColour(group ? clip.colour.brighter(0.6f).withMultipliedAlpha(dim) : outline);
     g.drawRoundedRectangle(body, cornerRadius, group ? 2.0f : 1.0f);
@@ -69,7 +85,7 @@ void TimelineLookAndFeelMethods::drawTimelineClip(juce::Graphics& g, const Timel
     const auto textColour = timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(dim);
     if (group)
         drawGroupBadge(g, body, textColour);
-    if (body.getHeight() < nameHeight || info.name.isEmpty())
+    if (!named)
         return;
     auto text = body.reduced(4.0f, 1.0f).withHeight(nameHeight);
     if (clip.cutLeft)
@@ -79,6 +95,85 @@ void TimelineLookAndFeelMethods::drawTimelineClip(juce::Graphics& g, const Timel
     g.setColour(textColour);
     g.setFont(smallFont(12.0f));
     g.drawText(info.name, text, juce::Justification::centredLeft, true);
+}
+
+void TimelineLookAndFeelMethods::drawTimelineClipWaveform(juce::Graphics& g, const Timeline& timeline, const ClipPaint& clip, juce::Rectangle<float> area)
+{
+    const auto& waveform = clip.waveform;
+    const auto dim = clip.info->muted ? mutedAlpha : 1.0f;
+    const auto drawable = waveform.status == WaveformStatus::loading || waveform.status == WaveformStatus::ready || waveform.status == WaveformStatus::readError;
+    if (drawable && waveform.peaks != nullptr)
+    {
+        jwaveform::WaveformStyle style;
+        style.minLaneHeight = getTimelineMetrics(timeline).minWaveformHeight;
+        style.displayScale = waveform.scale;
+        style.envelope = waveform.envelope;
+        style.colour = timeline.resolveColour(Timeline::waveformColourId).withMultipliedAlpha(dim);
+        jwaveform::drawWaveform(g, area, *waveform.peaks, waveform.sourceStart, waveform.sourceEnd, style);
+    }
+
+    const auto message = [&waveform] -> juce::String {
+        switch (waveform.status)
+        {
+            case WaveformStatus::cannotOpen:
+                return "Offline";
+            case WaveformStatus::readError:
+                return "Read error";
+            case WaveformStatus::rateMismatch:
+                return "Sample rate mismatch";
+            case WaveformStatus::none:
+            case WaveformStatus::loading:
+            case WaveformStatus::ready:
+                break;
+        }
+        return {};
+    }();
+    if (message.isEmpty() || clip.tier != ClipTier::full || area.getHeight() < nameHeight)
+        return;
+    auto text = area.reduced(4.0f, 1.0f).removeFromBottom(nameHeight);
+    if (clip.cutLeft)
+        text.setLeft(std::max(text.getX(), 4.0f));
+    g.setColour(timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(0.8f * dim));
+    g.setFont(smallFont(11.0f).italicised());
+    g.drawText(message, text, juce::Justification::centredLeft, true);
+}
+
+void TimelineLookAndFeelMethods::drawTimelineClipFades(juce::Graphics& g, const Timeline& timeline, const ClipPaint& clip, juce::Rectangle<float> body)
+{
+    const auto& info = *clip.info;
+    const auto length = static_cast<double>(info.range().length());
+    const auto pixelsPerSample = (clip.endX - clip.startX) / length;
+    const auto fadeIn = std::clamp(static_cast<double>(info.fadeIn), 0.0, length) * pixelsPerSample;
+    const auto fadeOut = std::clamp(static_cast<double>(info.fadeOut), 0.0, length) * pixelsPerSample;
+    const auto dim = info.muted ? mutedAlpha : 1.0f;
+    const auto shade = timeline.resolveColour(Timeline::fadeColourId).withMultipliedAlpha(dim);
+    const auto line = timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(0.7f * dim);
+    const auto top = static_cast<double>(body.getY());
+    const auto bottom = static_cast<double>(body.getBottom());
+
+    const auto shadeAbove = [&](double x1, double y1, double x2, double y2) {
+        const auto left = std::max(x1, static_cast<double>(body.getX()));
+        const auto right = std::min(x2, static_cast<double>(body.getRight()));
+        if (!(right > left) || !(x2 > x1))
+            return;
+        const auto yAt = [&](double x) { return static_cast<float>(y1 + ((y2 - y1) * (x - x1) / (x2 - x1))); };
+        const auto l = static_cast<float>(left);
+        const auto r = static_cast<float>(right);
+        juce::Path region;
+        region.startNewSubPath(l, static_cast<float>(top));
+        region.lineTo(l, yAt(left));
+        region.lineTo(r, yAt(right));
+        region.lineTo(r, static_cast<float>(top));
+        region.closeSubPath();
+        g.setColour(shade);
+        g.fillPath(region);
+        g.setColour(line);
+        g.drawLine(l, yAt(left), r, yAt(right), 1.0f);
+    };
+    if (fadeIn > 0.0)
+        shadeAbove(clip.startX, bottom, clip.startX + fadeIn, top);
+    if (fadeOut > 0.0)
+        shadeAbove(clip.endX - fadeOut, top, clip.endX, bottom);
 }
 
 void TimelineLookAndFeelMethods::drawTimelineCoverage(juce::Graphics& g, const Timeline& /*timeline*/, const juce::RectangleList<float>& spans, juce::Colour colour)

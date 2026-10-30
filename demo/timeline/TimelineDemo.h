@@ -2,7 +2,9 @@
 
 #include "DemoModel.h"
 
-class TimelineDemo final : public juce::Component, private juce::Timer
+#include <memory>
+
+class TimelineDemo final : public juce::Component, public juce::FileDragAndDropTarget, private juce::Timer
 {
 public:
     TimelineDemo();
@@ -15,14 +17,21 @@ public:
 
     void resized() override;
     void applyArguments(const juce::StringArray& args);
+    [[nodiscard]] bool isIdle() const;
+
+    bool isInterestedInFileDrag(const juce::StringArray& files) override;
+    void filesDropped(const juce::StringArray& files, int x, int y) override;
 
 private:
     void timerCallback() override;
     void updateStatus();
     void selectScenario();
     void selectFormat();
+    void addFiles(const juce::Array<juce::File>& files);
 
     DemoModel model;
+    std::shared_ptr<jwaveform::PeakCache> cache;
+    std::unique_ptr<juce::FileChooser> chooser;
     jtimeline::Timeline timeline;
     jtimeline::Timeline overview;
     juce::ComboBox scenario;
@@ -35,6 +44,8 @@ private:
     juce::TextButton edit{ "Edit 20 clips" };
     juce::TextButton addTrack{ "Add track" };
     juce::TextButton removeTrack{ "Remove track" };
+    juce::TextButton addFilesButton{ "Add files..." };
+    juce::ToggleButton slowBuilds{ "Slow builds" };
     juce::Label hint;
     juce::Label status;
     double playStartTime = 0.0;

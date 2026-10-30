@@ -5,6 +5,7 @@
 #include "component/jtimeline_TimelineLookAndFeel.cpp"
 #include "component/jtimeline_TimelineParts.cpp"
 #include "component/jtimeline_TrackHeader.cpp"
+#include "core/jtimeline_ClipWaveform.cpp"
 #include "core/jtimeline_KeyInput.cpp"
 #include "core/jtimeline_RulerTicks.cpp"
 #include "core/jtimeline_TimeMapping.cpp"

@@ -103,3 +103,12 @@
 - **Full zoom range while clips have no waveforms.** The level-0 limit exists for waveform sharpness; it applies from milestone 4.
 - **Ruler clicks report positions; the view does not move the playhead itself.** The playhead belongs to the application's transport.
 - **Home/End in `keys::actionFor`.** All key bindings stay in one tested place.
+
+## 2026-10-29 — Milestone 4
+
+- **One peak handle per source key per view, kept while painted.** Handles are requested while painting and released after a paint of the whole clip area that did not use them. Zooming out to coverage or scrolling away cancels unfinished builds without separate visibility bookkeeping; partial paints never release anything.
+- **Ready-made peaks draw without a cache.** They need no building; only cache-built sources depend on `setPeakCache`.
+- **Rate mismatch is checked before the peak state.** A mismatched source never draws, even partially, since its positions would be wrong.
+- **Overlapping fades multiply.** Fades are clamped to the clip length rather than to each other; the envelope stays well defined without inventing a rule.
+- **Zoom limit uses the timeline's display.** The physical scale is the display's scale times the component's scale factor, so it is right on mixed-DPI setups after the next zoom.
+- **Shared demo source.** Both demos use one synthetic reader with variants, so the timeline demo has distinct waveforms without audio files.

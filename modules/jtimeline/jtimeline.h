@@ -21,6 +21,7 @@ END_JUCE_MODULE_DECLARATION
 #include "component/jtimeline_TimelineLookAndFeel.h"
 #include "component/jtimeline_TrackHeader.h"
 #include "core/jtimeline_Change.h"
+#include "core/jtimeline_ClipWaveform.h"
 #include "core/jtimeline_Ids.h"
 #include "core/jtimeline_KeyInput.h"
 #include "core/jtimeline_LevelOfDetail.h"

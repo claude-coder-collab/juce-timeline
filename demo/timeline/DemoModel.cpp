@@ -17,13 +17,103 @@ jtimeline::SamplePosition seconds(double value)
 
 DemoModel::DemoModel()
 {
+    formats.registerBasicFormats();
+    makeSources();
     generate(Scenario::session);
+}
+
+jwaveform::WaveformSource DemoModel::syntheticSource(const juce::String& name, const SyntheticSettings& settings) const
+{
+    return { .key = name + " #" + juce::String{ generation } + (settings.slow ? " slow" : ""),
+        .createReader = [settings] { return std::make_unique<SyntheticReader>(settings); },
+        .peaks = nullptr };
+}
+
+void DemoModel::makeSources()
+{
+    ++generation;
+    sources.clear();
+    for (auto variant = 0; variant < 6; ++variant)
+        sources.push_back(syntheticSource("synthetic " + juce::String{ variant }, { .sampleRate = sampleRate, .length = sourceLength, .variant = variant, .slow = slowBuilds, .failAt = -1 }));
+}
+
+void DemoModel::setSlowBuilds(bool slow)
+{
+    slowBuilds = slow;
+    makeSources();
+    generate(scenario);
+}
+
+void DemoModel::addStatusExamples()
+{
+    auto& track = makeTrack("Status examples");
+    const auto add = [this, &track](double startSeconds, double lengthSeconds, const juce::String& name, jwaveform::WaveformSource source) {
+        jtimeline::ClipInfo info;
+        info.track = track.id;
+        info.start = seconds(startSeconds);
+        info.length = seconds(lengthSeconds);
+        info.sourceLength = sourceLength;
+        info.name = name;
+        info.source = std::move(source);
+        const auto id = jtimeline::ClipId{ nextId++ };
+        clips.emplace(id, Clip{ .info = std::move(info) });
+        track.byStart.push_back(id);
+    };
+    add(10.0, 20.0, "Offline file", { .key = "offline #" + juce::String{ generation }, .createReader = [] { return std::unique_ptr<juce::AudioFormatReader>{}; }, .peaks = nullptr });
+    add(40.0, 20.0, "44.1 kHz source", syntheticSource("44.1 kHz", { .sampleRate = 44100.0, .length = sourceLength, .variant = 1, .slow = slowBuilds, .failAt = -1 }));
+    add(70.0, 30.0, "Read error after 10 s", syntheticSource("read error", { .sampleRate = sampleRate, .length = sourceLength, .variant = 2, .slow = slowBuilds, .failAt = seconds(10.0) }));
+    sortTrack(track);
+}
+
+int DemoModel::addFiles(const juce::Array<juce::File>& files)
+{
+    auto added = 0;
+    auto longer = false;
+    for (const auto& file : files)
+    {
+        const std::unique_ptr<juce::AudioFormatReader> reader{ formats.createReaderFor(file) };
+        if (reader == nullptr || reader->lengthInSamples <= 0)
+            continue;
+        auto& track = makeTrack(file.getFileName());
+        const auto path = file.getFullPathName();
+        auto* manager = &formats;
+        jtimeline::ClipInfo info;
+        info.track = track.id;
+        info.length = reader->lengthInSamples;
+        info.sourceLength = reader->lengthInSamples;
+        info.name = file.getFileNameWithoutExtension();
+        info.source = jwaveform::WaveformSource{ .key = path + "|" + juce::String{ file.getLastModificationTime().toMilliseconds() },
+            .createReader = [manager, path] { return std::unique_ptr<juce::AudioFormatReader>{ manager->createReaderFor(juce::File{ path }) }; },
+            .peaks = nullptr };
+        if (info.length > length)
+        {
+            length = info.length;
+            longer = true;
+        }
+        const auto id = jtimeline::ClipId{ nextId++ };
+        clips.emplace(id, Clip{ .info = std::move(info) });
+        track.byStart.push_back(id);
+        sortTrack(track);
+        ++added;
+    }
+    if (longer)
+        notifier.changed(jtimeline::FullReset{});
+    else if (added > 0)
+        notifier.changed(jtimeline::TracksChanged{});
+    return added;
 }
 
 DemoModel::Track& DemoModel::makeTrack(const juce::String& name)
 {
     const auto id = jtimeline::TrackId{ nextId++ };
     return tracks.emplace_back(Track{ .id = id, .info = { .name = name, .colour = trackColours.at(tracks.size() % trackColours.size()), .heightHint = std::nullopt }, .byStart = {}, .longest = 0 });
+}
+
+void DemoModel::randomiseLevels(jtimeline::ClipInfo& info)
+{
+    info.gainDb = random.nextInt(4) == 0 ? -18.0 + (random.nextDouble() * 24.0) : 0.0;
+    info.fadeIn = random.nextBool() ? static_cast<jtimeline::SamplePosition>(random.nextDouble() * 0.3 * static_cast<double>(info.length)) : 0;
+    info.fadeOut = random.nextBool() ? static_cast<jtimeline::SamplePosition>(random.nextDouble() * 0.3 * static_cast<double>(info.length)) : 0;
 }
 
 jtimeline::ClipInfo DemoModel::randomClip(jtimeline::TrackId track, jtimeline::SamplePosition start, jtimeline::SamplePosition clipLength, const juce::String& name)
@@ -41,6 +131,13 @@ jtimeline::ClipInfo DemoModel::randomClip(jtimeline::TrackId track, jtimeline::S
     info.muted = random.nextInt(20) == 0;
     if (random.nextInt(10) == 0)
         info.colour = juce::Colour::fromHSV(random.nextFloat(), 0.5f, 0.8f, 1.0f);
+    if (info.kind == jtimeline::ClipKind::audio)
+    {
+        info.source = sources[static_cast<std::size_t>(random.nextInt(static_cast<int>(sources.size())))];
+        info.sourceLength = sourceLength;
+        info.sourceOffset = static_cast<jtimeline::SamplePosition>(random.nextDouble() * static_cast<double>(std::max<jtimeline::SamplePosition>(sourceLength - info.length, 0)));
+        randomiseLevels(info);
+    }
     return info;
 }
 
@@ -58,14 +155,16 @@ void DemoModel::fillTrack(Track& track, double minSeconds, double maxSeconds, do
     sortTrack(track);
 }
 
-void DemoModel::generate(Scenario scenario)
+void DemoModel::generate(Scenario newScenario)
 {
+    scenario = newScenario;
     tracks.clear();
     clips.clear();
     switch (scenario)
     {
         case Scenario::session:
             length = seconds(3600.0);
+            addStatusExamples();
             for (auto index = 0; index < 16; ++index)
                 fillTrack(makeTrack("Track " + juce::String{ index + 1 }), 0.01, 20.0, 5.0);
             break;
@@ -220,6 +319,8 @@ void DemoModel::editRandomClips(int count)
         {
             info.colour = juce::Colour::fromHSV(random.nextFloat(), 0.6f, 0.9f, 1.0f);
             info.muted = !info.muted;
+            if (info.kind == jtimeline::ClipKind::audio)
+                randomiseLevels(info);
         }
         removeClip(id);
         clips.emplace(id, Clip{ .info = info });

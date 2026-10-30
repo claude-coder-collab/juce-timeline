@@ -5,7 +5,7 @@ Two [JUCE 8](https://juce.com) modules for showing an audio timeline: tracks of 
 - **jwaveform**: waveform peaks and drawing. It works without a timeline.
 - **jtimeline**: the timeline view. It depends on jwaveform.
 
-Status: milestone 3. The timeline view shows tracks and clips as plain blocks, with a ruler, zoom, scrolling, a playhead and an overview mode. Waveforms in clips arrive in milestone 4; selection and keyboard navigation in milestone 5 (see `SPEC.md`).
+Status: milestone 4. The timeline view shows tracks and clips with waveforms (drawn while they build), gain and fades, plus a ruler, zoom, scrolling, a playhead and an overview mode. Selection and keyboard navigation arrive in milestone 5, zooming past one peak per pixel in milestone 6 (see `SPEC.md`).
 
 ### jtimeline
 
@@ -27,6 +27,8 @@ timeline.setModel({
 notifier.changed(jtimeline::ClipsChanged{ .ids = { movedClip } });
 timeline.onTimeClicked = [&](jtimeline::SamplePosition position) { timeline.setPlayhead(position); };
 ```
+
+Clips draw waveforms when their `ClipInfo::source` is set and the timeline has a cache: `timeline.setPeakCache(cache)`, sharing one cache between views (see jwaveform below). Missing files, read errors and sources at another sample rate show as labelled clips.
 
 `clipsInRange` should not scan the whole track; keep clips sorted by start. `clipSpans` is optional but keeps zoomed-out views of thousands of clips fast. For an overview strip, bind a second `Timeline` to the same model and call `setOverviewMode(true)`.
 

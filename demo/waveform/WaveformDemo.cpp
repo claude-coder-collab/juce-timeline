@@ -1,61 +1,11 @@
 #include "WaveformDemo.h"
 
-#include <chrono>
+#include "SyntheticSource.h"
+
 #include <cmath>
-#include <cstring>
-#include <numbers>
-#include <thread>
 
 namespace
 {
-
-class SyntheticReader final : public juce::AudioFormatReader
-{
-public:
-    SyntheticReader(double rate, juce::int64 length, bool slowIn) :
-        AudioFormatReader(nullptr, "Synthetic"),
-        slow(slowIn)
-    {
-        sampleRate = rate;
-        lengthInSamples = length;
-        numChannels = 2;
-        bitsPerSample = 32;
-        usesFloatingPointData = true;
-    }
-
-    bool readSamples(int* const* destChannels, int numDestChannels, int startOffsetInDestBuffer, juce::int64 startSampleInFile, int numSamples) override
-    {
-        if (slow)
-            std::this_thread::sleep_for(std::chrono::milliseconds{ 15 });
-        for (auto channel = 0; channel < numDestChannels; ++channel)
-        {
-            if (destChannels[channel] == nullptr)
-                continue;
-            for (auto i = 0; i < numSamples; ++i)
-            {
-                const auto value = generate(channel, startSampleInFile + i);
-                std::memcpy(destChannels[channel] + startOffsetInDestBuffer + i, &value, sizeof(float));
-            }
-        }
-        return true;
-    }
-
-private:
-    [[nodiscard]] float generate(int channel, juce::int64 position) const
-    {
-        const auto seconds = static_cast<double>(position) / sampleRate;
-        const auto bar = std::fmod(seconds, 8.0);
-        const auto envelope = bar < 4.0 ? std::exp(-bar * 1.5) : 0.15 * (1.0 + std::sin(seconds * 0.7));
-        const auto slowSwell = 0.55 + (0.45 * std::sin(seconds * 2.0 * std::numbers::pi / 600.0));
-        const auto frequency = channel == 0 ? 110.0 : 165.0;
-        const auto tone = std::sin(2.0 * std::numbers::pi * frequency * seconds);
-        const auto hash = static_cast<std::uint32_t>(position * 2654435761LL) ^ static_cast<std::uint32_t>(channel * 40503);
-        const auto noise = (static_cast<double>(hash % 2001U) / 1000.0) - 1.0;
-        return static_cast<float>(slowSwell * envelope * ((0.8 * tone) + (0.2 * noise)));
-    }
-
-    bool slow = false;
-};
 
 constexpr int toolbarHeight = 30;
 constexpr int overviewHeight = 70;
@@ -202,7 +152,7 @@ void WaveformDemo::openSynthetic()
 {
     const auto slow = slowBuild.getToggleState();
     const auto key = "synthetic " + juce::String{ ++syntheticCount } + (slow ? " slow" : "");
-    setSource({ .key = key, .createReader = [slow] { return std::make_unique<SyntheticReader>(48000.0, 48000LL * 3600, slow); }, .peaks = nullptr });
+    setSource({ .key = key, .createReader = [slow] { return std::make_unique<SyntheticReader>(SyntheticSettings{ .sampleRate = 48000.0, .length = 48000LL * 3600, .variant = 0, .slow = slow, .failAt = -1 }); }, .peaks = nullptr });
 }
 
 void WaveformDemo::setSource(const jwaveform::WaveformSource& source)
