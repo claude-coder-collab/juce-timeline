@@ -24,7 +24,7 @@ struct ClipsChanged
     friend bool operator==(const ClipsChanged&, const ClipsChanged&) = default;
 };
 
-/** Markers or the loop range changed. */
+/** Markers or the timeline selection changed. */
 struct MarkersChanged
 {
     /** Compares two changes. */

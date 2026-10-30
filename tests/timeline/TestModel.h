@@ -28,7 +28,7 @@ public:
     bool withSpans = true;
     bool withMarkers = false;
     std::vector<jtimeline::Marker> markers;
-    std::optional<jtimeline::SampleRange> loop;
+    std::optional<jtimeline::SampleRange> timelineSelection;
 
     jtimeline::TrackId addTrack()
     {
@@ -76,7 +76,7 @@ public:
             .adjacentClip = {},
             .clipSpans = {},
             .markersInRange = {},
-            .loopRange = {},
+            .timelineSelection = {},
             .notifier = notifier.get(),
         };
         if (withSpans)
@@ -100,7 +100,7 @@ public:
                         result.push_back(marker);
                 return result;
             };
-            model.loopRange = [this] { return loop; };
+            model.timelineSelection = [this] { return timelineSelection; };
         }
         return model;
     }

@@ -219,7 +219,7 @@ jtimeline::TimelineModel DemoModel::bind()
                 spans.push_back(clips.at(clip).info.range().intersection({ .start = start, .end = end }));
             return jtimeline::mergeSpans(std::move(spans), minGap); },
         .markersInRange = [this](jtimeline::SamplePosition start, jtimeline::SamplePosition end) { return markersInRange(start, end); },
-        .loopRange = [this] { return loop; },
+        .timelineSelection = [this] { return timelineSelection; },
         .notifier = &notifier,
     };
 }
@@ -304,7 +304,7 @@ std::vector<jtimeline::Marker> DemoModel::markersInRange(jtimeline::SamplePositi
     return { from, to };
 }
 
-void DemoModel::makeMarkers(int count, const juce::StringArray& names, std::optional<jtimeline::SampleRange> loopRange)
+void DemoModel::makeMarkers(int count, const juce::StringArray& names, std::optional<jtimeline::SampleRange> selection)
 {
     markers.clear();
     for (auto index = 0; index < count; ++index)
@@ -313,7 +313,7 @@ void DemoModel::makeMarkers(int count, const juce::StringArray& names, std::opti
         const auto name = index < names.size() ? names[index] : "Marker " + juce::String{ index + 1 };
         markers.push_back({ .id = jtimeline::MarkerId{ static_cast<std::uint64_t>(index) + 1 }, .position = position, .name = name, .colour = index % 4 == 3 ? std::optional{ juce::Colour{ 0xff4fa3e0 } } : std::nullopt });
     }
-    loop = loopRange;
+    timelineSelection = selection;
 }
 
 jtimeline::ClipId DemoModel::addClip(jtimeline::ClipInfo info)

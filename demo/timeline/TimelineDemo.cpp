@@ -191,8 +191,8 @@ void TimelineDemo::updateStatus()
         text << ". Cursor on clip " << juce::String{ static_cast<juce::int64>(*cursor.clip) };
     else if (cursor.track)
         text << ". Cursor on track " << juce::String{ static_cast<juce::int64>(*cursor.track) };
-    if (const auto loop = timeline.getLoopRange())
-        text << ". Loop " << time(loop->start) << " to " << time(loop->end);
+    if (const auto range = timeline.getTimelineSelection())
+        text << ". Timeline selection " << time(range->start) << " to " << time(range->end);
     selectionStatus.setText(text, juce::dontSendNotification);
 }
 

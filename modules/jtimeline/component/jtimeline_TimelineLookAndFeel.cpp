@@ -228,7 +228,7 @@ void TimelineLookAndFeelMethods::drawTimelinePlayhead(juce::Graphics& g, const T
     g.fillPath(marker);
 }
 
-void TimelineLookAndFeelMethods::drawTimelineMarkerStrip(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const MarkerPaint> markers, std::optional<juce::Rectangle<float>> loop)
+void TimelineLookAndFeelMethods::drawTimelineMarkerStrip(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const MarkerPaint> markers, std::optional<juce::Rectangle<float>> timelineSelection)
 {
     g.setColour(timeline.resolveColour(Timeline::rulerBackgroundColourId).darker(0.15f));
     g.fillRect(area);
@@ -256,10 +256,10 @@ void TimelineLookAndFeelMethods::drawTimelineMarkerStrip(juce::Graphics& g, cons
         g.drawText(marker.marker->name, juce::Rectangle<float>{ marker.x + 9.0f, area.getY(), width, area.getHeight() - 1.0f }, juce::Justification::centredLeft, true);
     }
 
-    if (loop)
+    if (timelineSelection)
     {
-        const auto colour = timeline.resolveColour(Timeline::loopColourId);
-        const auto bar = loop->withTrimmedTop(area.getHeight() * 0.55f).withTrimmedBottom(2.0f);
+        const auto colour = timeline.resolveColour(Timeline::timelineSelectionColourId);
+        const auto bar = timelineSelection->withTrimmedTop(area.getHeight() * 0.55f).withTrimmedBottom(2.0f);
         g.setColour(colour.withMultipliedAlpha(0.75f));
         g.fillRect(bar);
         g.setColour(colour);

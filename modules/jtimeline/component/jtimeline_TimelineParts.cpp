@@ -70,10 +70,10 @@ void Ruler::paint(juce::Graphics& g)
         for (const auto& marker : timeline.markersFor(visible))
             if (marker.position >= visible.start && marker.position < visible.end)
                 markers.push_back({ .x = static_cast<float>(std::clamp(mapping.toPixel(marker.position), -labelWidth, width + clipMargin)), .marker = &marker, .colour = marker.colour.value_or(timeline.resolveColour(Timeline::markerColourId)) });
-        std::optional<juce::Rectangle<float>> loopArea;
-        if (const auto& loop = timeline.loop)
-            loopArea = juce::Rectangle<float>::leftTopRightBottom(toX(loop->start), strip.getY(), std::max(toX(loop->end), toX(loop->start) + 1.0f), strip.getBottom());
-        methods.drawTimelineMarkerStrip(g, timeline, strip, markers, loopArea);
+        std::optional<juce::Rectangle<float>> selectionArea;
+        if (const auto& range = timeline.timelineSelection)
+            selectionArea = juce::Rectangle<float>::leftTopRightBottom(toX(range->start), strip.getY(), std::max(toX(range->end), toX(range->start) + 1.0f), strip.getBottom());
+        methods.drawTimelineMarkerStrip(g, timeline, strip, markers, selectionArea);
     }
     methods.drawTimelineRuler(g, timeline, timeScale, marks);
     if (const auto& range = timeline.selection.getTimeRange())

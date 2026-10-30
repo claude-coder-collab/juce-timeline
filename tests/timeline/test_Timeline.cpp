@@ -529,29 +529,29 @@ TEST_CASE("Timeline keeps the selection across model changes while the ids exist
     CHECK(timeline.getKeyboardCursor().isEmpty());
 }
 
-TEST_CASE("Timeline draws markers and the loop range, and selects time on the ruler", "[timeline][markers]")
+TEST_CASE("Timeline draws markers and the timeline selection, and selects time on the ruler", "[timeline][markers]")
 {
     const juce::ScopedJuceInitialiser_GUI juce;
     TestModel model;
     model.addTrack();
     model.withMarkers = true;
     model.markers = { { .id = jtimeline::MarkerId{ 1 }, .position = 2 * second, .name = "Verse", .colour = std::nullopt }, { .id = jtimeline::MarkerId{ 2 }, .position = 30 * second, .name = "Chorus", .colour = juce::Colours::red } };
-    model.loop = jtimeline::SampleRange{ .start = 4 * second, .end = 6 * second };
+    model.timelineSelection = jtimeline::SampleRange{ .start = 4 * second, .end = 6 * second };
     Timeline timeline;
     timeline.setBounds(0, 0, 1172, 300);
     timeline.setModel(model.bind());
     timeline.setVisibleRange({ .start = 0, .end = 10 * second });
     CHECK(timeline.getClipAreaBounds().getY() == 28 + 18);
-    CHECK(timeline.getLoopRange() == model.loop);
+    CHECK(timeline.getTimelineSelection() == model.timelineSelection);
 
     model.counts = {};
     paint(timeline);
     CHECK(model.counts.markers == 1);
     paint(timeline);
     CHECK(model.counts.markers == 1);
-    model.loop.reset();
+    model.timelineSelection.reset();
     model.notifier->changed(jtimeline::MarkersChanged{});
-    CHECK_FALSE(timeline.getLoopRange());
+    CHECK_FALSE(timeline.getTimelineSelection());
     paint(timeline);
     CHECK(model.counts.markers == 2);
 

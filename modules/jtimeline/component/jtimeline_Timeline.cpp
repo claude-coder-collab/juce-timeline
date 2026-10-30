@@ -341,7 +341,7 @@ juce::Colour Timeline::resolveColour(int colourId) const
             return getLookAndFeel().findColour(juce::Slider::thumbColourId);
         case markerColourId:
             return juce::Colour{ 0xffe8a33d };
-        case loopColourId:
+        case timelineSelectionColourId:
             return juce::Colour{ 0xff5cb85c };
         case keyboardCursorColourId:
         case playheadColourId:
@@ -1284,7 +1284,7 @@ std::unique_ptr<juce::AccessibilityHandler> Timeline::createAccessibilityHandler
 //==============================================================================
 bool Timeline::hasMarkerStrip() const
 {
-    return !overview && model.isComplete() && (model.markersInRange || model.loopRange);
+    return !overview && model.isComplete() && (model.markersInRange || model.timelineSelection);
 }
 
 int Timeline::rulerTotalHeight() const
@@ -1295,9 +1295,9 @@ int Timeline::rulerTotalHeight() const
 
 void Timeline::readMarkers()
 {
-    loop = model.isComplete() && model.loopRange ? model.loopRange() : std::nullopt;
-    if (loop && loop->isEmpty())
-        loop.reset();
+    timelineSelection = model.isComplete() && model.timelineSelection ? model.timelineSelection() : std::nullopt;
+    if (timelineSelection && timelineSelection->isEmpty())
+        timelineSelection.reset();
     markerCache = {};
 }
 

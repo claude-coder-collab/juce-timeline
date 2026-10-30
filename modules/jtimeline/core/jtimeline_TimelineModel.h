@@ -107,8 +107,8 @@ struct TimelineModel
         Views pass ranges a little wider than they show, and may pass ranges outside [0, length()].
     */
     std::function<std::vector<Marker>(SamplePosition rangeStart, SamplePosition rangeEnd)> markersInRange;
-    /** Optional: returns the loop range, or nothing if there is none. */
-    std::function<std::optional<SampleRange>()> loopRange;
+    /** Optional: returns the timeline selection, or nothing if there is none. */
+    std::function<std::optional<SampleRange>()> timelineSelection;
 
     /** The notifier the model reports changes through. Without one, call Timeline::refresh(). */
     TimelineNotifier* notifier = nullptr;

@@ -45,7 +45,8 @@ class Ruler;
     ruler selects a time range. Selection is view state, held by id and kept across model
     changes while the ids exist. Visible clips are exposed to accessibility clients.
 
-    Markers and a loop range, if the model supplies them, are drawn in a strip above the ruler.
+    Markers and a timeline selection, if the model supplies them, are drawn in a strip above the
+    ruler. The timeline selection is model data, unlike the view's time selection.
 
     Clips with a WaveformSource draw their waveforms through the PeakCache set with setPeakCache(),
     requesting peaks only for clips drawn with room for a waveform and releasing them when no such
@@ -79,7 +80,7 @@ public:
         selectionColourId = 0x2a5200e, /**< Selected clip outlines, rubber bands and the tint of selected tracks. */
         timeSelectionColourId = 0x2a5200f, /**< The time selection. */
         markerColourId = 0x2a52010, /**< Markers with no colour of their own. */
-        loopColourId = 0x2a52011, /**< The loop range. */
+        timelineSelectionColourId = 0x2a52011, /**< The model's timeline selection. */
         keyboardCursorColourId = 0x2a52012 /**< The keyboard cursor, shown while the timeline has keyboard focus. */
     };
 
@@ -199,8 +200,8 @@ public:
     */
     bool moveKeyboardCursor(CursorMove move, SelectMode mode);
 
-    /** Returns the loop range as last read from the model. */
-    [[nodiscard]] std::optional<SampleRange> getLoopRange() const { return loop; }
+    /** Returns the timeline selection as last read from the model. */
+    [[nodiscard]] std::optional<SampleRange> getTimelineSelection() const { return timelineSelection; }
 
     //==============================================================================
     /** Sets the waveform vertical scale, clamped to [0.25, 64]. Drawing only. */
@@ -389,7 +390,7 @@ private:
 
     Selection selection;
     KeyboardCursor keyboardCursor;
-    std::optional<SampleRange> loop;
+    std::optional<SampleRange> timelineSelection;
     struct MarkerCache
     {
         bool valid = false;

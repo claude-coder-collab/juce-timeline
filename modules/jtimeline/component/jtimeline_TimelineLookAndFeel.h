@@ -29,7 +29,7 @@ struct TimelineMetrics
     DetailThresholds detail; /**< Clip widths for each level of detail. */
     float clipInset = 1.0f; /**< Space between a clip and its lane's top and bottom edges. */
     float minWaveformHeight = 12.0f; /**< Clips shorter than this draw no waveform, and stacked channels shorter than this are combined. */
-    int markerStripHeight = 18; /**< The strip above the ruler's time scale for markers and the loop range, shown when the model has either. */
+    int markerStripHeight = 18; /**< The strip above the ruler's time scale for markers and the timeline selection, shown when the model has either. */
 };
 
 /** A clip's waveform as the Timeline asks the look and feel to draw it. */
@@ -113,8 +113,8 @@ public:
     virtual void drawTimelineRuler(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const RulerMark> marks);
     /** Draws the playhead in the clip area (inRuler false) or the ruler (inRuler true). */
     virtual void drawTimelinePlayhead(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, float x, bool inRuler);
-    /** Draws the strip above the time scale: its background, the loop range (if any) and the markers, with names to their right. */
-    virtual void drawTimelineMarkerStrip(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const MarkerPaint> markers, std::optional<juce::Rectangle<float>> loop);
+    /** Draws the strip above the time scale: its background, the timeline selection (if any) and the markers, with names to their right. */
+    virtual void drawTimelineMarkerStrip(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const MarkerPaint> markers, std::optional<juce::Rectangle<float>> timelineSelection);
     /** Draws the time selection over the clip area (inRuler false) or the ruler's time scale (inRuler true). */
     virtual void drawTimelineTimeSelection(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, bool inRuler);
     /** Draws the rubber band while dragging a selection rectangle in the clip area. */
