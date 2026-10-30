@@ -112,3 +112,16 @@
 - **Overlapping fades multiply.** Fades are clamped to the clip length rather than to each other; the envelope stays well defined without inventing a rule.
 - **Zoom limit uses the timeline's display.** The physical scale is the display's scale times the component's scale factor, so it is right on mixed-DPI setups after the next zoom.
 - **Shared demo source.** Both demos use one synthetic reader with variants, so the timeline demo has distinct waveforms without audio files.
+
+## 2026-10-29 — Milestone 5
+
+- **Markers and loop range are optional model callbacks.** `markersInRange` keeps marker reads proportional to the view, like clips; the loop is a single value. Both share the existing `MarkersChanged` notification.
+- **Markers get their own strip above the time scale.** Tick labels already fill the time scale; the strip appears only for models that have markers or a loop, so other applications keep the 28 px ruler.
+- **A ruler drag selects time; a click still reports a position.** Scrubbing by drag was dropped in favour of the spec's time selection. Clicking a marker reports its position, so locating to markers needs no extra callback.
+- **Shift adds, Command/Ctrl toggles.** The spec named both modifiers without assigning them; this follows common file-browser behaviour.
+- **Replace-mode clicks clear the other object kind.** Clicking a clip deselects tracks and vice versa, so a plain click always leaves a single selected object; Select all leaves tracks alone.
+- **Keys that do not move the cursor leave the selection alone.** Pressing Right on the last clip should not collapse a multi-selection.
+- **Unconsumed Escape.** Escape on a track does nothing and is passed on, so hosts can use it to close panels.
+- **Proxies only for reduced and full clips, at most 1000.** JUCE cannot report whether a screen reader is running, so proxies are always maintained; narrower clips are not individually useful to a screen reader, and the cap bounds the per-scroll cost (about 2 ms at the cap).
+- **Accessibility handlers need a window.** JUCE creates them only for components on a peer, so the accessibility test puts the timeline on the desktop.
+- **Demo answers `adjacentClip`.** It shows the intended model shape; the doubling-window fallback is covered by unit tests.

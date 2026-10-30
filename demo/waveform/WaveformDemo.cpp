@@ -266,6 +266,16 @@ bool WaveformDemo::keyPressed(const juce::KeyPress& key)
         case jtimeline::KeyAction::selectAll:
         case jtimeline::KeyAction::scrollToStart:
         case jtimeline::KeyAction::scrollToEnd:
+        case jtimeline::KeyAction::cursorLeft:
+        case jtimeline::KeyAction::cursorRight:
+        case jtimeline::KeyAction::cursorUp:
+        case jtimeline::KeyAction::cursorDown:
+        case jtimeline::KeyAction::extendLeft:
+        case jtimeline::KeyAction::extendRight:
+        case jtimeline::KeyAction::extendUp:
+        case jtimeline::KeyAction::extendDown:
+        case jtimeline::KeyAction::cursorEnter:
+        case jtimeline::KeyAction::cursorEscape:
             break;
     }
     return false;

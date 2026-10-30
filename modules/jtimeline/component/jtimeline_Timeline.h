@@ -1,6 +1,8 @@
 #pragma once
 
+#include "../core/jtimeline_KeyboardNavigation.h"
 #include "../core/jtimeline_RulerTicks.h"
+#include "../core/jtimeline_Selection.h"
 #include "../core/jtimeline_TimelineNotifier.h"
 #include "jtimeline_TimelineLookAndFeel.h"
 #include "jtimeline_TrackHeader.h"
@@ -36,7 +38,14 @@ class Ruler;
 
     Wheel, trackpad and key bindings follow Pro Tools' defaults (see keys::actionFor and
     wheel::actionFor). Horizontal zooms not anchored at the pointer are anchored at the edit
-    cursor, which is the playhead for now.
+    cursor: the start of the time selection, else the playhead.
+
+    Clips and tracks are selected by clicking (Shift adds, Command/Ctrl toggles), by dragging a
+    rubber band over empty space, by Command/Ctrl + A and by keyboard navigation; a drag on the
+    ruler selects a time range. Selection is view state, held by id and kept across model
+    changes while the ids exist. Visible clips are exposed to accessibility clients.
+
+    Markers and a loop range, if the model supplies them, are drawn in a strip above the ruler.
 
     Clips with a WaveformSource draw their waveforms through the PeakCache set with setPeakCache(),
     requesting peaks only for clips drawn with room for a waveform and releasing them when no such
@@ -66,7 +75,12 @@ public:
         playheadColourId = 0x2a5200a, /**< The playhead. */
         highlightColourId = 0x2a5200b, /**< An overview's highlighted range. */
         waveformColourId = 0x2a5200c, /**< Clip waveforms. Falls back to the clip text colour. */
-        fadeColourId = 0x2a5200d /**< The shading above clip fade lines. */
+        fadeColourId = 0x2a5200d, /**< The shading above clip fade lines. */
+        selectionColourId = 0x2a5200e, /**< Selected clip outlines, rubber bands and the tint of selected tracks. */
+        timeSelectionColourId = 0x2a5200f, /**< The time selection. */
+        markerColourId = 0x2a52010, /**< Markers with no colour of their own. */
+        loopColourId = 0x2a52011, /**< The loop range. */
+        keyboardCursorColourId = 0x2a52012 /**< The keyboard cursor, shown while the timeline has keyboard focus. */
     };
 
     /** Creates an empty timeline. Call setModel() to show data. */
@@ -142,8 +156,51 @@ public:
     void setFollowPlayhead(bool shouldFollow);
     /** Returns true in page follow mode. */
     [[nodiscard]] bool isFollowingPlayhead() const { return followPlayhead; }
-    /** Returns the edit cursor, the anchor of zooms not at the pointer: the playhead. */
-    [[nodiscard]] SamplePosition getEditCursor() const { return playhead; }
+    /** Returns the edit cursor, the anchor of zooms not at the pointer: the time selection's start, else the playhead. */
+    [[nodiscard]] SamplePosition getEditCursor() const;
+
+    //==============================================================================
+    /** Returns the selection. */
+    [[nodiscard]] const Selection& getSelection() const { return selection; }
+    /** Returns the selected clips, sorted by id. */
+    [[nodiscard]] std::vector<ClipId> getSelectedClips() const;
+    /** Returns the selected tracks, in display order. */
+    [[nodiscard]] std::vector<TrackId> getSelectedTracks() const;
+    /** Returns true if a clip is selected. */
+    [[nodiscard]] bool isClipSelected(ClipId clip) const { return selection.contains(clip); }
+    /** Returns true if a track is selected. */
+    [[nodiscard]] bool isTrackSelected(TrackId track) const { return selection.contains(track); }
+    /** Returns the selected time range, if any. */
+    [[nodiscard]] std::optional<SampleRange> getTimeSelection() const { return selection.getTimeRange(); }
+    /** Replaces the selected clips. */
+    void setSelectedClips(std::span<const ClipId> clips);
+    /** Replaces the selected tracks. */
+    void setSelectedTracks(std::span<const TrackId> selectedTracks);
+    /** Sets the time selection, clamped to the timeline; empty clears it. */
+    void setTimeSelection(std::optional<SampleRange> range);
+    /** Selects a clip as a click would, and moves the keyboard cursor to it. */
+    void selectClip(ClipId clip, SelectMode mode);
+    /** Selects a track as a click on its header would, and moves the keyboard cursor to it. */
+    void selectTrack(TrackId track, SelectMode mode);
+    /** Selects every clip, querying each track over the whole timeline. */
+    void selectAllClips();
+    /** Deselects every clip and track and clears the time selection. */
+    void clearSelection();
+    /** Zooms and scrolls to the time selection, else to the span of the selected clips. */
+    void zoomToSelection();
+
+    /** Returns the keyboard cursor. */
+    [[nodiscard]] const KeyboardCursor& getKeyboardCursor() const { return keyboardCursor; }
+    /** Moves the keyboard cursor without changing the selection or scrolling. A clip's track is filled in from the model. */
+    void setKeyboardCursor(KeyboardCursor cursor);
+    /**
+        Moves the keyboard cursor as the arrow, Return and Escape keys do, selects what it lands on
+        and scrolls it into view. Returns false if the cursor did not move.
+    */
+    bool moveKeyboardCursor(CursorMove move, SelectMode mode);
+
+    /** Returns the loop range as last read from the model. */
+    [[nodiscard]] std::optional<SampleRange> getLoopRange() const { return loop; }
 
     //==============================================================================
     /** Sets the waveform vertical scale, clamped to [0.25, 64]. Drawing only. */
@@ -191,6 +248,8 @@ public:
     std::function<void()> onViewChanged; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
     /** Called when the view's or a track's waveform scale changes. */
     std::function<void()> onWaveformScaleChanged; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
+    /** Called when the selected clips, tracks or time range change, whatever the cause. */
+    std::function<void()> onSelectionChanged; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
 
     /** @internal */
     void resized() override;
@@ -206,6 +265,17 @@ public:
     void lookAndFeelChanged() override;
     /** @internal */
     void colourChanged() override;
+    /** @internal */
+    void focusGained(FocusChangeType cause) override;
+    /** @internal */
+    void focusLost(FocusChangeType cause) override;
+    /** @internal */
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+    /** @internal Takes keyboard focus after a click on the timeline or one of its parts, if it is showing. */
+    void focusFromClick();
+    /** @internal Returns a clip's accessible description: its track, time range and state. */
+    [[nodiscard]] juce::String describeClip(const ClipInfo& info) const;
 
 private:
     friend class detail::ClipArea;
@@ -254,6 +324,23 @@ private:
     void waveformChanged(const juce::String& key);
     void releaseUnusedWaveforms();
 
+    void selectionChanged();
+    void validateSelection(std::optional<std::span<const ClipId>> changedClips);
+    void validateCursor();
+    void cursorChanged();
+    [[nodiscard]] NavigationContext navigationContext() const;
+    void reveal(const KeyboardCursor& cursor);
+    void revealTrack(int index);
+    [[nodiscard]] std::vector<ClipId> clipsInArea(juce::Rectangle<float> area) const;
+    [[nodiscard]] juce::String describe(const KeyboardCursor& cursor) const;
+    [[nodiscard]] juce::String trackName(TrackId track) const;
+    static void announce(const juce::String& text);
+
+    [[nodiscard]] bool hasMarkerStrip() const;
+    [[nodiscard]] int rulerTotalHeight() const;
+    const std::vector<Marker>& markersFor(SampleRange range);
+    void readMarkers();
+
     [[nodiscard]] int trackIndex(TrackId track) const;
     [[nodiscard]] juce::Rectangle<float> laneBounds(int index) const;
     [[nodiscard]] const ClipInfo* cachedClip(ClipId id) const;
@@ -299,6 +386,17 @@ private:
     bool overview = false;
     SampleRange highlighted;
     std::function<std::unique_ptr<TrackHeader>()> headerFactory;
+
+    Selection selection;
+    KeyboardCursor keyboardCursor;
+    std::optional<SampleRange> loop;
+    struct MarkerCache
+    {
+        bool valid = false;
+        SampleRange queried;
+        std::vector<Marker> markers;
+    };
+    MarkerCache markerCache;
 
     std::unique_ptr<detail::Ruler> ruler;
     std::unique_ptr<detail::HeaderArea> headers;

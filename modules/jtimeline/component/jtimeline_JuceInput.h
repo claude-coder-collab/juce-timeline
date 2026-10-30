@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../core/jtimeline_KeyInput.h"
+#include "../core/jtimeline_Selection.h"
 #include "../core/jtimeline_WheelInput.h"
 
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -22,5 +23,8 @@ namespace jtimeline
 
 /** Returns the action for a JUCE key press on this platform. */
 [[nodiscard]] KeyAction keyActionFor(const juce::KeyPress& key);
+
+/** Returns how a click with these modifiers selects: Shift adds, Command/Ctrl toggles, otherwise replaces. */
+[[nodiscard]] SelectMode selectModeFrom(const juce::ModifierKeys& modifiers);
 
 }

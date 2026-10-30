@@ -5,7 +5,7 @@ Two [JUCE 8](https://juce.com) modules for showing an audio timeline: tracks of 
 - **jwaveform**: waveform peaks and drawing. It works without a timeline.
 - **jtimeline**: the timeline view. It depends on jwaveform.
 
-Status: milestone 4. The timeline view shows tracks and clips with waveforms (drawn while they build), gain and fades, plus a ruler, zoom, scrolling, a playhead and an overview mode. Selection and keyboard navigation arrive in milestone 5, zooming past one peak per pixel in milestone 6 (see `SPEC.md`).
+Status: milestone 5. The timeline view shows tracks and clips with waveforms (drawn while they build), gain and fades, a ruler with markers and a loop range, zoom, scrolling, a playhead and an overview mode. Clips, tracks and time ranges can be selected by mouse and keyboard, and visible clips are exposed to screen readers. Zooming past one peak per pixel arrives in milestone 6 (see `SPEC.md`).
 
 ### jtimeline
 
@@ -26,11 +26,14 @@ timeline.setModel({
 });
 notifier.changed(jtimeline::ClipsChanged{ .ids = { movedClip } });
 timeline.onTimeClicked = [&](jtimeline::SamplePosition position) { timeline.setPlayhead(position); };
+timeline.onSelectionChanged = [&] { showInspector(timeline.getSelectedClips()); };
 ```
 
 Clips draw waveforms when their `ClipInfo::source` is set and the timeline has a cache: `timeline.setPeakCache(cache)`, sharing one cache between views (see jwaveform below). Missing files, read errors and sources at another sample rate show as labelled clips.
 
-`clipsInRange` should not scan the whole track; keep clips sorted by start. `clipSpans` is optional but keeps zoomed-out views of thousands of clips fast. For an overview strip, bind a second `Timeline` to the same model and call `setOverviewMode(true)`.
+`clipsInRange` should not scan the whole track; keep clips sorted by start. `clipSpans` and `adjacentClip` are optional but keep zoomed-out views and keyboard navigation fast. Add `markersInRange` and `loopRange` to show markers and a loop range; report their changes with `MarkersChanged`.
+
+Selection is per view and kept by id across model changes. Click clips or track headers (Shift adds, Command/Ctrl toggles), drag over empty space for a rubber band, or drag on the ruler for a time range; arrows, Return and Escape move a keyboard cursor between clips and tracks. For an overview strip, bind a second `Timeline` to the same model and call `setOverviewMode(true)`.
 
 Customise headers with `setTrackHeaderFactory` and a `TrackHeader` subclass, drawing by deriving your LookAndFeel from `jtimeline::TimelineLookAndFeelMethods`, and colours with `Timeline::ColourIds`.
 

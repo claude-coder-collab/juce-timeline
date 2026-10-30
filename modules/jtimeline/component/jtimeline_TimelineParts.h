@@ -2,12 +2,34 @@
 
 #include "jtimeline_Timeline.h"
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace jtimeline::detail
 {
+
+class SelectableHandler final : public juce::AccessibilityHandler
+{
+public:
+    SelectableHandler(juce::Component& component, juce::AccessibilityRole role, std::function<bool()> isSelectedIn, const std::function<void(SelectMode)>& select) :
+        juce::AccessibilityHandler(component, role, juce::AccessibilityActions{}.addAction(juce::AccessibilityActionType::press, [select] { select(SelectMode::replace); }).addAction(juce::AccessibilityActionType::toggle, [select] { select(SelectMode::toggle); })),
+        isSelected(std::move(isSelectedIn))
+    {
+    }
+
+    [[nodiscard]] juce::AccessibleState getCurrentState() const override
+    {
+        const auto state = juce::AccessibilityHandler::getCurrentState().withSelectable();
+        return isSelected() ? state.withSelected() : state;
+    }
+
+private:
+    std::function<bool()> isSelected;
+};
 
 class Ruler final : public juce::Component
 {
@@ -17,11 +39,16 @@ public:
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
 
 private:
-    void pick(const juce::MouseEvent& event);
+    [[nodiscard]] SamplePosition positionAt(float x) const;
+    [[nodiscard]] std::optional<SamplePosition> markerAt(juce::Point<float> position);
+    [[nodiscard]] juce::Rectangle<float> timeScaleArea() const;
 
     Timeline& timeline; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    std::optional<SamplePosition> dragAnchor;
+    bool selecting = false;
 };
 
 class HeaderArea final : public juce::Component
@@ -31,6 +58,7 @@ public:
 
     void update();
     void clear();
+    void repaintHeaders();
     [[nodiscard]] int getNumPooled() const { return static_cast<int>(pool.size()); }
 
 private:
@@ -39,22 +67,57 @@ private:
     std::unordered_map<TrackId, TrackHeader*> bound;
 };
 
-class ClipArea final : public juce::Component
+class ClipProxy final : public juce::Component
 {
 public:
+    explicit ClipProxy(Timeline& owner);
+
+    void bind(ClipId id, const ClipInfo& info);
+    [[nodiscard]] ClipId getClipId() const { return clip; }
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+private:
+    Timeline& timeline; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    ClipId clip{};
+};
+
+class ClipArea final : public juce::Component, private juce::AsyncUpdater
+{
+public:
+    static constexpr int maxProxies = 1000;
+
     explicit ClipArea(Timeline& owner);
+    ~ClipArea() override;
+
+    ClipArea(const ClipArea&) = delete;
+    ClipArea& operator=(const ClipArea&) = delete;
+    ClipArea(ClipArea&&) = delete;
+    ClipArea& operator=(ClipArea&&) = delete;
 
     void paint(juce::Graphics& g) override;
     void mouseDown(const juce::MouseEvent& event) override;
     void mouseDrag(const juce::MouseEvent& event) override;
+    void mouseUp(const juce::MouseEvent& event) override;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+    void proxiesNeedUpdate();
+    void updateProxies();
+    [[nodiscard]] std::vector<ClipProxy*> getVisibleProxies() const;
 
 private:
+    void handleAsyncUpdate() override;
     void paintContents(juce::Graphics& g, TimelineLookAndFeelMethods& methods);
     void paintTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods, int index, juce::Rectangle<float> lane, SampleRange visible);
     void paintOverviewTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods, int index, juce::Rectangle<float> lane);
     void pickInOverview(const juce::MouseEvent& event);
+    void updateBand(juce::Rectangle<float> next);
 
     Timeline& timeline; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    std::vector<std::unique_ptr<ClipProxy>> proxies;
+    std::optional<juce::Point<float>> bandStart;
+    bool banding = false;
+    juce::Rectangle<float> band;
+    std::vector<ClipId> bandBase;
 };
 
 }

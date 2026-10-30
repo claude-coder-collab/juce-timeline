@@ -48,7 +48,9 @@ jtimeline_configure_target(jwaveform_static)
 add_library(jtimeline_static STATIC
     modules/jtimeline/core/jtimeline_ClipWaveform.cpp
     modules/jtimeline/core/jtimeline_KeyInput.cpp
+    modules/jtimeline/core/jtimeline_KeyboardNavigation.cpp
     modules/jtimeline/core/jtimeline_RulerTicks.cpp
+    modules/jtimeline/core/jtimeline_Selection.cpp
     modules/jtimeline/core/jtimeline_TimeMapping.cpp
     modules/jtimeline/core/jtimeline_TimelineModel.cpp
     modules/jtimeline/core/jtimeline_TimelineNotifier.cpp

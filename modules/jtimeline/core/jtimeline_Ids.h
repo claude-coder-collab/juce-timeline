@@ -13,4 +13,8 @@ enum class TrackId : std::uint64_t {
 enum class ClipId : std::uint64_t {
 };
 
+/** A marker's stable identity, chosen by the model. */
+enum class MarkerId : std::uint64_t {
+};
+
 }
