@@ -118,7 +118,7 @@
 - **Markers and the timeline selection are optional model callbacks.** `markersInRange` keeps marker reads proportional to the view, like clips; the timeline selection is a single value. Both share the existing `MarkersChanged` notification.
 - **Markers get their own strip above the time scale.** Tick labels already fill the time scale; the strip appears only for models that have markers or a timeline selection, so other applications keep the 28 px ruler.
 - **A ruler drag selects time; a click still reports a position.** Scrubbing by drag was dropped in favour of the spec's time selection. Clicking a marker reports its position, so locating to markers needs no extra callback.
-- **Shift adds, Command/Ctrl toggles.** The spec named both modifiers without assigning them; this follows common file-browser behaviour.
+- **Shift adds, Command/Ctrl toggles.** The spec named both modifiers without assigning them; this follows common file-browser behaviour. (Superseded after QA: Shift + click selects a range.)
 - **Replace-mode clicks clear the other object kind.** Clicking a clip deselects tracks and vice versa, so a plain click always leaves a single selected object; Select all leaves tracks alone.
 - **Keys that do not move the cursor leave the selection alone.** Pressing Right on the last clip should not collapse a multi-selection.
 - **Unconsumed Escape.** Escape on a track does nothing and is passed on, so hosts can use it to close panels.
@@ -135,4 +135,10 @@
 - **Select all is scoped to selected tracks.** Requested: with tracks selected, Command/Ctrl + A selects their clips only.
 - **Option/Alt + wheel zooms around the selected clips.** Requested. Only that gesture changes; keys keep the edit cursor, since the user asked only for the wheel. The span is cached because select-all can hold thousands of clips and wheel events are frequent.
 - **Waveform columns snapped to physical pixels.** Columns were placed relative to the clip's fractional left edge and straddled physical pixels, so anti-aliasing striped dense waveforms and dotted quiet ones.
+- **Track and clip cursors are the keyboard cursor's parts.** Shift + click needs an anchor; the keyboard cursor already has a track and a clip, so they serve, and Shift + click leaves them in place so repeated Shift-clicks re-range from the same anchor.
+- **Shift + click selects a rectangle, not one more clip.** Requested: from the cursor clip to the clicked clip across tracks and time, by overlap like the rubber band. Command/Ctrl remains the way to add single clips.
+- **Shift + drag anywhere is a rubber band.** Requested, so clips can be band-selected without empty space to start from; a plain drag on a clip stays free for moving clips in milestone 8.
+- **Selected tracks follow selection gestures on clips.** Requested, so track height keys act on the tracks of selected clips. API setters stay literal so applications can set any combination.
+- **One zoom anchor for wheel and keys.** Requested: T/R and Command/Ctrl + ]/[ also zoom around the selected clips. `zoomAtEditCursor` became `zoomAtAnchor`.
+- **Space reports, the application plays.** The view never plays audio, so Space only calls `onPlayStop`.
 

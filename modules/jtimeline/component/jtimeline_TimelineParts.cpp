@@ -490,15 +490,19 @@ void ClipArea::mouseDown(const juce::MouseEvent& event)
     }
     timeline.focusFromClick();
     const auto mode = selectModeFrom(event.mods);
-    if (const auto clip = timeline.clipAt(event.getEventRelativeTo(&timeline).position))
+    const auto shift = event.mods.isShiftDown();
+    const auto clip = timeline.clipAt(event.getEventRelativeTo(&timeline).position);
+    shiftClicked.reset();
+    if (clip && !shift)
     {
         timeline.selectClip(*clip, mode);
         return;
     }
+    shiftClicked = clip;
     bandStart = event.position;
     banding = false;
     band = {};
-    if (mode == SelectMode::replace)
+    if (mode == SelectMode::replace && !shift)
     {
         bandBase.clear();
         if (timeline.selection.clearObjects())
@@ -524,13 +528,16 @@ void ClipArea::mouseDrag(const juce::MouseEvent& event)
     auto ids = bandBase;
     const auto inside = timeline.clipsInArea(band);
     ids.insert(ids.end(), inside.begin(), inside.end());
-    timeline.setSelectedClips(ids);
+    timeline.selectClipsByGesture(ids);
 }
 
 void ClipArea::mouseUp(const juce::MouseEvent& /*event*/)
 {
-    if (banding)
+    if (!banding && shiftClicked)
+        timeline.extendClipSelection(*shiftClicked);
+    if (banding || shiftClicked)
         Timeline::announce(juce::String{ static_cast<juce::int64>(timeline.selection.getClips().size()) } + " clips selected");
+    shiftClicked.reset();
     bandStart.reset();
     banding = false;
     updateBand({});

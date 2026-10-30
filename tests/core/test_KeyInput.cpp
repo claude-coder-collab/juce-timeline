@@ -29,10 +29,12 @@ TEST_CASE("Option/Alt + A zooms to fit and Command/Ctrl + A selects all", "[keys
     CHECK(keys::actionFor({ .character = U'a', .alt = true, .control = true }, true) == KeyAction::none);
 }
 
-TEST_CASE("Option/Alt + F zooms to the selection", "[keys]")
+TEST_CASE("Option/Alt + F zooms to the selection and Space plays", "[keys]")
 {
     for (const auto isMac : { true, false })
     {
+        CHECK(keys::actionFor({ .character = U' ' }, isMac) == KeyAction::playStop);
+        CHECK(keys::actionFor({ .character = U' ', .shift = true }, isMac) == KeyAction::none);
         CHECK(keys::actionFor({ .character = U'F', .alt = true }, isMac) == KeyAction::zoomToSelection);
         CHECK(keys::actionFor({ .character = U'f' }, isMac) == KeyAction::none);
         CHECK(keys::actionFor({ .character = U'f', .shift = true, .alt = true }, isMac) == KeyAction::none);

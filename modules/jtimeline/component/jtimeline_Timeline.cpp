@@ -446,10 +446,10 @@ void Timeline::zoomToFit()
     setMapping(TimeMapping{ getZoomLimits().maxSamplesPerPixel, 0 });
 }
 
-void Timeline::zoomAtEditCursor(double steps, double factorPerStep)
+void Timeline::zoomAtAnchor(double steps, double factorPerStep)
 {
     const auto target = getZoomLimits().clamp(wheel::zoomedSamplesPerPixel(mapping.getSamplesPerPixel(), steps, factorPerStep));
-    setMapping(mapping.zoomedAroundSample(target, getEditCursor(), clipAreaWidth()));
+    setMapping(mapping.zoomedAroundSample(target, getZoomAnchor(), clipAreaWidth()));
 }
 
 void Timeline::scrollTo(SamplePosition position)
@@ -846,8 +846,8 @@ void Timeline::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWh
         next = next.scrolledBy(action.scrollTimePixels);
     if (action.zoomAtPointerSteps != 0.0)
         next = next.zoomedAround(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtPointerSteps, wheel::zoomFactorPerNotch)), pointerX);
-    if (action.zoomAtEditCursorSteps != 0.0)
-        next = next.zoomedAroundSample(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtEditCursorSteps, wheel::zoomFactorPerNotch)), wheelZoomAnchor(), clipAreaWidth());
+    if (action.zoomAtAnchorSteps != 0.0)
+        next = next.zoomedAroundSample(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtAnchorSteps, wheel::zoomFactorPerNotch)), getZoomAnchor(), clipAreaWidth());
     setMapping(next);
     if (action.waveformZoomSteps != 0.0)
         setWaveformScale(waveformScale * std::pow(wheel::waveformFactorPerStep, action.waveformZoomSteps));
@@ -871,16 +871,21 @@ bool Timeline::keyPressed(const juce::KeyPress& key)
     switch (action)
     {
         case KeyAction::zoomIn:
-            zoomAtEditCursor(1.0, wheel::zoomFactorPerKey);
+            zoomAtAnchor(1.0, wheel::zoomFactorPerKey);
             return true;
         case KeyAction::zoomOut:
-            zoomAtEditCursor(-1.0, wheel::zoomFactorPerKey);
+            zoomAtAnchor(-1.0, wheel::zoomFactorPerKey);
             return true;
         case KeyAction::zoomToFit:
             zoomToFit();
             return true;
         case KeyAction::zoomToSelection:
             zoomToSelection();
+            return true;
+        case KeyAction::playStop:
+            if (!onPlayStop)
+                return false;
+            onPlayStop();
             return true;
         case KeyAction::waveformTaller:
             setWaveformScale(waveformScale * wheel::waveformFactorPerStep);
@@ -995,11 +1000,59 @@ void Timeline::selectClip(ClipId clip, SelectMode mode)
     const auto info = model.isComplete() ? model.clipInfo(clip) : std::nullopt;
     if (!info)
         return;
-    const auto changed = selection.select(clip, mode);
+    auto changed = selection.select(clip, mode);
+    changed = tracksFollowClips() || changed;
     keyboardCursor = { .track = info->track, .clip = clip };
     cursorChanged();
     if (changed)
         selectionChanged();
+}
+
+void Timeline::extendClipSelection(ClipId clip)
+{
+    const auto anchor = keyboardCursor.clip && model.isComplete() ? model.clipInfo(*keyboardCursor.clip) : std::nullopt;
+    const auto target = model.isComplete() ? model.clipInfo(clip) : std::nullopt;
+    if (!target)
+        return;
+    const auto anchorIndex = anchor ? trackIndex(anchor->track) : -1;
+    const auto targetIndex = trackIndex(target->track);
+    if (!anchor || anchorIndex < 0 || targetIndex < 0)
+    {
+        selectClip(clip, SelectMode::replace);
+        return;
+    }
+    const auto first = normalised(*anchor).range();
+    const auto second = normalised(*target).range();
+    const SampleRange span{ .start = std::min(first.start, second.start), .end = std::max(first.end, second.end) };
+    std::vector<ClipId> ids;
+    for (auto index = std::min(anchorIndex, targetIndex); index <= std::max(anchorIndex, targetIndex); ++index)
+    {
+        const auto found = model.clipsInRange(tracks[static_cast<std::size_t>(index)].id, span.start, span.end);
+        ids.insert(ids.end(), found.begin(), found.end());
+    }
+    selectClipsByGesture(ids);
+}
+
+void Timeline::selectClipsByGesture(std::span<const ClipId> clips)
+{
+    auto changed = selection.setClips(clips);
+    changed = tracksFollowClips() || changed;
+    if (changed)
+        selectionChanged();
+}
+
+bool Timeline::tracksFollowClips()
+{
+    std::unordered_set<TrackId> holding;
+    for (const auto clip : selection.getClips())
+    {
+        if (const auto* cached = cachedClip(clip))
+            holding.insert(cached->track);
+        else if (const auto info = model.isComplete() ? model.clipInfo(clip) : std::nullopt)
+            holding.insert(info->track);
+    }
+    const std::vector<TrackId> ids{ holding.begin(), holding.end() };
+    return selection.setTracks(ids);
 }
 
 void Timeline::selectTrack(TrackId track, SelectMode mode)
@@ -1013,20 +1066,45 @@ void Timeline::selectTrack(TrackId track, SelectMode mode)
         selectionChanged();
 }
 
+void Timeline::extendTrackSelection(TrackId track)
+{
+    const auto anchorIndex = keyboardCursor.track ? trackIndex(*keyboardCursor.track) : -1;
+    const auto targetIndex = trackIndex(track);
+    if (targetIndex < 0)
+        return;
+    if (anchorIndex < 0)
+    {
+        selectTrack(track, SelectMode::replace);
+        return;
+    }
+    std::vector<TrackId> ids;
+    for (auto index = std::min(anchorIndex, targetIndex); index <= std::max(anchorIndex, targetIndex); ++index)
+        ids.push_back(tracks[static_cast<std::size_t>(index)].id);
+    auto changed = selection.setTracks(ids);
+    changed = selection.setClips({}) || changed;
+    if (changed)
+        selectionChanged();
+}
+
 void Timeline::selectAllClips()
 {
     if (!model.isComplete() || length <= 0)
         return;
     const auto onSelectedTracks = !selection.getTracks().empty();
     std::vector<ClipId> all;
+    std::vector<TrackId> holding;
     for (const auto& track : tracks)
     {
         if (onSelectedTracks && !selection.contains(track.id))
             continue;
         const auto ids = model.clipsInRange(track.id, 0, length);
         all.insert(all.end(), ids.begin(), ids.end());
+        if (!ids.empty())
+            holding.push_back(track.id);
     }
-    if (selection.setClips(all))
+    auto changed = selection.setClips(all);
+    changed = selection.setTracks(holding) || changed;
+    if (changed)
         selectionChanged();
 }
 
@@ -1070,7 +1148,7 @@ std::optional<SampleRange> Timeline::getSelectedClipSpan()
     return span;
 }
 
-SamplePosition Timeline::wheelZoomAnchor()
+SamplePosition Timeline::getZoomAnchor()
 {
     if (const auto span = getSelectedClipSpan())
         return span->start + (span->length() / 2);
@@ -1176,9 +1254,14 @@ bool Timeline::moveKeyboardCursor(CursorMove move, SelectMode mode)
     keyboardCursor = next;
     auto changed = false;
     if (next.clip)
+    {
         changed = selection.select(*next.clip, mode);
+        changed = tracksFollowClips() || changed;
+    }
     else if (next.track)
+    {
         changed = selection.select(*next.track, mode);
+    }
     cursorChanged();
     reveal(next);
     if (changed)

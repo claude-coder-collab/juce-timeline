@@ -37,7 +37,7 @@ public:
     /** Called after the header is bound to another track or its track's info changes. Repaints by default. */
     virtual void trackChanged();
 
-    /** Selects the track: Shift adds it to the selection, Command/Ctrl toggles it. Call this from an override. */
+    /** Selects the track: Command/Ctrl toggles it, Shift selects the tracks from the track cursor to it. Call this from an override. */
     void mouseDown(const juce::MouseEvent& event) override;
     /** @internal */
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;

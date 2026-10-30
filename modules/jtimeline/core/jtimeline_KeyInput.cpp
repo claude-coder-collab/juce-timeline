@@ -77,6 +77,8 @@ KeyAction actionFor(const KeyInput& key, bool isMac)
             if (commandOnly)
                 return KeyAction::zoomIn;
             return commandAlt ? KeyAction::waveformTaller : KeyAction::none;
+        case U' ':
+            return plain ? KeyAction::playStop : KeyAction::none;
         case U'f':
             return altOnly ? KeyAction::zoomToSelection : KeyAction::none;
         case U'[':

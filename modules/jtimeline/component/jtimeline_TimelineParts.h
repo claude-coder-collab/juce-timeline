@@ -118,6 +118,7 @@ private:
     bool banding = false;
     juce::Rectangle<float> band;
     std::vector<ClipId> bandBase;
+    std::optional<ClipId> shiftClicked;
 };
 
 }

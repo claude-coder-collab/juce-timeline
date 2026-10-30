@@ -63,8 +63,8 @@ TimelineDemo::TimelineDemo() :
     };
 
     hint.setText("Drop audio files to add tracks. Click the ruler, a marker or the overview: playhead / move. Drag the ruler: time selection. Wheel: tracks. Shift: time. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: "
-                 "zoom at edit cursor. Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + A: fit. Option/Alt + F: zoom to selection. Home/End: ends.\n"
-                 "Click clips or headers to select (Shift adds, Cmd/Ctrl toggles); drag empty space: rubber band; Cmd/Ctrl + A: all. Arrows, Shift + arrows, Return, Esc: keyboard cursor. "
+                 "zoom at selected clips, else edit cursor. Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + A: fit. Option/Alt + F: zoom to selection. Home/End: ends. Space: play/stop.\n"
+                 "Click clips or headers to select (Cmd/Ctrl toggles, Shift: range from cursor); drag empty space or Shift + drag: rubber band; Cmd/Ctrl + A: all. Arrows, Shift + arrows, Return, Esc: keyboard cursor. "
                  "Ctrl + Up/Down: track height. Option/Alt + Shift + wheel, Cmd + Option/Ctrl + Alt + ]/[: waveform height.",
         juce::dontSendNotification);
     hint.setFont(juce::FontOptions{ 13.0f });
@@ -82,6 +82,7 @@ TimelineDemo::TimelineDemo() :
     };
     timeline.onWaveformScaleChanged = [this] { updateStatus(); };
     timeline.onSelectionChanged = [this] { updateStatus(); };
+    timeline.onPlayStop = [this] { play.triggerClick(); };
     timeline.onTimeClicked = [this](jtimeline::SamplePosition position) {
         timeline.setPlayhead(position);
         overview.setPlayhead(position);

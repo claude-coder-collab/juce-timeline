@@ -37,13 +37,14 @@ class Ruler;
     clips from the model and updates on TimelineNotifier changes.
 
     Wheel, trackpad and key bindings follow Pro Tools' defaults (see keys::actionFor and
-    wheel::actionFor). Horizontal zooms not anchored at the pointer are anchored at the edit
-    cursor: the start of the time selection, else the playhead. The Option/Alt + wheel zoom is
-    anchored at the centre of the selected clips instead, when clips are selected.
+    wheel::actionFor). Horizontal zooms not anchored at the pointer are anchored at the zoom
+    anchor: the centre of the selected clips, else the edit cursor (the start of the time
+    selection, else the playhead).
 
-    Clips and tracks are selected by clicking (Shift adds, Command/Ctrl toggles), by dragging a
-    rubber band over empty space, by Command/Ctrl + A and by keyboard navigation; a drag on the
-    ruler selects a time range. Selection is view state, held by id and kept across model
+    Clips and tracks are selected by clicking (Command/Ctrl toggles, Shift selects the range from
+    the cursor), by dragging a rubber band over empty space or with Shift, by Command/Ctrl + A and
+    by keyboard navigation; the selected tracks follow the selected clips. A drag on the ruler
+    selects a time range. Selection is view state, held by id and kept across model
     changes while the ids exist. Visible clips are exposed to accessibility clients.
 
     Markers and a timeline selection, if the model supplies them, are drawn in a strip above the
@@ -127,8 +128,8 @@ public:
     void setVisibleRange(SampleRange range);
     /** Zooms out to show the whole timeline. */
     void zoomToFit();
-    /** Zooms horizontally by a number of steps of a factor, anchored at the edit cursor; negative steps zoom out. */
-    void zoomAtEditCursor(double steps, double factorPerStep);
+    /** Zooms horizontally by a number of steps of a factor, anchored at getZoomAnchor(); negative steps zoom out. */
+    void zoomAtAnchor(double steps, double factorPerStep);
     /** Scrolls so a position is at the left edge, as far as the scroll range allows. */
     void scrollTo(SamplePosition position);
 
@@ -158,8 +159,10 @@ public:
     void setFollowPlayhead(bool shouldFollow);
     /** Returns true in page follow mode. */
     [[nodiscard]] bool isFollowingPlayhead() const { return followPlayhead; }
-    /** Returns the edit cursor, the anchor of zooms not at the pointer: the time selection's start, else the playhead. */
+    /** Returns the edit cursor: the time selection's start, else the playhead. */
     [[nodiscard]] SamplePosition getEditCursor() const;
+    /** Returns the anchor of zooms not at the pointer: the centre of the selected clips' span, else the edit cursor. */
+    [[nodiscard]] SamplePosition getZoomAnchor();
 
     //==============================================================================
     /** Returns the selection. */
@@ -180,11 +183,29 @@ public:
     void setSelectedTracks(std::span<const TrackId> selectedTracks);
     /** Sets the time selection, clamped to the timeline; empty clears it. */
     void setTimeSelection(std::optional<SampleRange> range);
-    /** Selects a clip as a click would, and moves the keyboard cursor to it. */
+    /**
+        Selects a clip as a click would, moves the keyboard cursor to it, and makes the selected
+        tracks those of the selected clips.
+    */
     void selectClip(ClipId clip, SelectMode mode);
+    /**
+        Selects every clip overlapping the rectangle from the cursor clip to a clip, across the
+        tracks between them and from the earlier start to the later end, as Shift + click does; the
+        selected tracks follow and the cursor stays. Without a cursor clip, selects the clip as a
+        plain click does.
+    */
+    void extendClipSelection(ClipId clip);
     /** Selects a track as a click on its header would, and moves the keyboard cursor to it. */
     void selectTrack(TrackId track, SelectMode mode);
-    /** Selects every clip on the selected tracks, or on every track if none is selected, querying each over the whole timeline. */
+    /**
+        Selects the tracks from the track cursor to a track, deselecting clips, as Shift + click on a
+        header does; the cursor stays. Without a track cursor, selects the track as a plain click does.
+    */
+    void extendTrackSelection(TrackId track);
+    /**
+        Selects every clip on the selected tracks, or on every track if none is selected, querying
+        each over the whole timeline; the selected tracks become those holding selected clips.
+    */
     void selectAllClips();
     /** Deselects every clip and track and clears the time selection. */
     void clearSelection();
@@ -252,6 +273,8 @@ public:
     std::function<void()> onViewChanged; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
     /** Called when the view's or a track's waveform scale changes. */
     std::function<void()> onWaveformScaleChanged; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
+    /** Called when Space is pressed; the application starts or stops playback. */
+    std::function<void()> onPlayStop; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
     /** Called when the selected clips, tracks or time range change, whatever the cause. */
     std::function<void()> onSelectionChanged; // NOLINT(cppcoreguidelines-non-private-member-variables-in-classes)
 
@@ -329,7 +352,8 @@ private:
     void releaseUnusedWaveforms();
 
     void selectionChanged();
-    [[nodiscard]] SamplePosition wheelZoomAnchor();
+    bool tracksFollowClips();
+    void selectClipsByGesture(std::span<const ClipId> clips);
     void validateSelection(std::optional<std::span<const ClipId>> changedClips);
     void validateCursor();
     void cursorChanged();

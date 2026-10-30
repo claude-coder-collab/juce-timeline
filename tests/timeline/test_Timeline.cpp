@@ -163,7 +163,7 @@ TEST_CASE("Timeline fits the whole timeline and clamps zoom", "[timeline]")
     timeline.setPlayhead(5 * second);
     timeline.setVisibleRange({ .start = 0, .end = 10 * second });
     const auto before = timeline.getMapping().toPixel(5 * second);
-    timeline.zoomAtEditCursor(1.0, 2.0);
+    timeline.zoomAtAnchor(1.0, 2.0);
     CHECK(timeline.getMapping().toPixel(5 * second) == Approx(before));
     CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(10.0 * 48000.0 / 2000.0));
 }
@@ -418,21 +418,36 @@ TEST_CASE("Timeline selects clips and tracks by clicking, rubber band and keyboa
 
     auto& area = part<jtimeline::detail::ClipArea>(timeline);
     const auto at = [](double seconds, int track) { return juce::Point{ static_cast<float>(seconds * 100.0), static_cast<float>((track * 72) + 30) }; };
+    const auto shift = juce::ModifierKeys::shiftModifier;
     click(area, at(0.5, 0));
     CHECK(timeline.getSelectedClips() == std::vector{ a });
+    CHECK(timeline.getSelectedTracks() == std::vector{ top });
     CHECK(timeline.getKeyboardCursor() == jtimeline::KeyboardCursor{ .track = top, .clip = a });
-    click(area, at(3.5, 0), juce::ModifierKeys::shiftModifier);
+    click(area, at(3.5, 0), juce::ModifierKeys::commandModifier);
     CHECK(timeline.getSelectedClips() == std::vector{ a, b });
     click(area, at(0.5, 0), juce::ModifierKeys::commandModifier);
     CHECK(timeline.getSelectedClips() == std::vector{ b });
     click(area, at(8.0, 0));
     CHECK(timeline.getSelectedClips().empty());
+    CHECK(timeline.getSelectedTracks().empty());
     CHECK(changes == 4);
 
-    drag(area, at(2.5, 0), at(6.5, 2));
-    CHECK(timeline.getSelectedClips() == std::vector{ b, c, d });
-    drag(area, at(8.0, 0), at(0.2, 0), juce::ModifierKeys::shiftModifier);
+    click(area, at(0.5, 0));
+    click(area, at(6.5, 2), shift);
     CHECK(timeline.getSelectedClips() == std::vector{ a, b, c, d });
+    CHECK(timeline.getSelectedTracks() == std::vector{ top, middle, bottom });
+    CHECK(timeline.getKeyboardCursor().clip == a);
+    click(area, at(2.5, 1), shift);
+    CHECK(timeline.getSelectedClips() == std::vector{ a, c });
+    CHECK(timeline.getSelectedTracks() == std::vector{ top, middle });
+    drag(area, at(3.5, 0), at(6.5, 2), shift);
+    CHECK(timeline.getSelectedClips() == std::vector{ a, b, c, d });
+    CHECK(timeline.getKeyboardCursor().clip == a);
+
+    drag(area, at(8.0, 0), at(2.5, 2));
+    CHECK(timeline.getSelectedClips() == std::vector{ b, c, d });
+    CHECK(timeline.getSelectedTracks() == std::vector{ top, middle, bottom });
+    drag(area, at(8.0, 0), at(0.2, 0), shift);
     CHECK(timeline.getSelectedClips() == std::vector{ a, b, c, d });
 
     auto& header = dynamic_cast<jtimeline::TrackHeader&>(*timeline.getComponentAt(juce::Point{ 20, 28 + 72 + 10 }));
@@ -440,10 +455,15 @@ TEST_CASE("Timeline selects clips and tracks by clicking, rubber band and keyboa
     CHECK(timeline.getSelectedTracks() == std::vector{ middle });
     CHECK(timeline.getSelectedClips().empty());
     CHECK(timeline.getKeyboardCursor() == jtimeline::KeyboardCursor{ .track = middle, .clip = std::nullopt });
+    auto& lastHeader = dynamic_cast<jtimeline::TrackHeader&>(*timeline.getComponentAt(juce::Point{ 20, 28 + 144 + 10 }));
+    click(lastHeader, { 10.0f, 10.0f }, shift);
+    CHECK(timeline.getSelectedTracks() == std::vector{ middle, bottom });
+    CHECK(timeline.getKeyboardCursor().track == middle);
 
     timeline.stepTrackHeights(std::vector{ top, middle, bottom }, 0);
     CHECK(timeline.keyPressed(juce::KeyPress{ juce::KeyPress::upKey, isMacPlatformForTests() ? juce::ModifierKeys::ctrlModifier : juce::ModifierKeys::commandModifier, 0 }));
     CHECK(timeline.getTrackHeight(middle) == 112);
+    CHECK(timeline.getTrackHeight(bottom) == 112);
     CHECK(timeline.getTrackHeight(top) == 72);
 
     CHECK(timeline.keyPressed(juce::KeyPress{ juce::KeyPress::returnKey }));
@@ -468,9 +488,14 @@ TEST_CASE("Timeline selects clips and tracks by clicking, rubber band and keyboa
     CHECK(timeline.getKeyboardCursor().clip == b);
     CHECK(timeline.getVisibleRange().start <= 3 * second);
     CHECK(timeline.getVisibleRange().end >= 5 * second);
+    CHECK(timeline.getSelectedTracks() == std::vector{ top });
 
     CHECK(timeline.keyPressed(juce::KeyPress{ 'a', juce::ModifierKeys::commandModifier, 0 }));
+    CHECK(timeline.getSelectedClips() == std::vector{ a, b });
+    timeline.clearSelection();
+    CHECK(timeline.keyPressed(juce::KeyPress{ 'a', juce::ModifierKeys::commandModifier, 0 }));
     CHECK(timeline.getSelectedClips() == std::vector{ a, b, c, d });
+    CHECK(timeline.getSelectedTracks() == std::vector{ top, middle, bottom });
 
     timeline.setTimeSelection(jtimeline::SampleRange{ .start = 2 * second, .end = 4 * second });
     CHECK(timeline.getEditCursor() == 2 * second);
@@ -503,6 +528,17 @@ TEST_CASE("Timeline selects clips and tracks by clicking, rubber band and keyboa
     timeline.mouseWheelMove(event, juce::MouseWheelDetails{ .deltaX = 0.0f, .deltaY = 0.1f, .isReversed = false, .isSmooth = false, .isInertial = false });
     CHECK(timeline.getMapping().getSamplesPerPixel() < spp);
     CHECK(timeline.getMapping().toPixel(anchor) == Approx(before));
+    CHECK(timeline.getZoomAnchor() == anchor);
+
+    const auto keyBefore = timeline.getMapping().toPixel(anchor);
+    CHECK(timeline.keyPressed(juce::KeyPress{ 't' }));
+    CHECK(timeline.getMapping().toPixel(anchor) == Approx(keyBefore));
+
+    CHECK_FALSE(timeline.keyPressed(juce::KeyPress{ juce::KeyPress::spaceKey }));
+    auto toggles = 0;
+    timeline.onPlayStop = [&toggles] { ++toggles; };
+    CHECK(timeline.keyPressed(juce::KeyPress{ juce::KeyPress::spaceKey }));
+    CHECK(toggles == 1);
 }
 
 TEST_CASE("Timeline keeps the selection across model changes while the ids exist", "[timeline][selection]")

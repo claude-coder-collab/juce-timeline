@@ -47,7 +47,7 @@ WheelAction actionFor(WheelModifiers modifiers, WheelDelta delta)
     }
     else if (alt && !shift && !command)
     {
-        action.zoomAtEditCursorSteps = steps(delta.deltaY, delta.isSmooth);
+        action.zoomAtAnchorSteps = steps(delta.deltaY, delta.isSmooth);
     }
     else if (command && !shift && !alt)
     {

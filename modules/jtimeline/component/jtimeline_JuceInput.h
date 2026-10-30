@@ -24,7 +24,7 @@ namespace jtimeline
 /** Returns the action for a JUCE key press on this platform. */
 [[nodiscard]] KeyAction keyActionFor(const juce::KeyPress& key);
 
-/** Returns how a click with these modifiers selects: Shift adds, Command/Ctrl toggles, otherwise replaces. */
+/** Returns how a click with these modifiers selects: Command/Ctrl toggles, otherwise replaces. Shift + click selects a range, which callers handle first. */
 [[nodiscard]] SelectMode selectModeFrom(const juce::ModifierKeys& modifiers);
 
 }

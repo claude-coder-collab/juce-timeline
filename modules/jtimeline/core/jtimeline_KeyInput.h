@@ -40,6 +40,7 @@ enum class KeyAction {
     zoomOut, /**< Horizontal zoom out, anchored at the edit cursor. */
     zoomToFit, /**< Zoom out to show the whole timeline. */
     zoomToSelection, /**< Zoom to the time selection, else the selected clips. */
+    playStop, /**< Start or stop playback. */
     waveformTaller, /**< Waveform height up. */
     waveformShorter, /**< Waveform height down. */
     trackTaller, /**< Track height up. */
@@ -66,7 +67,7 @@ namespace keys
 /**
     Returns the action for a key press. Bindings (macOS / Windows and Linux):
     T and R zoom in and out; Command/Ctrl + ] and [ zoom in and out; Option/Alt + A zooms to fit;
-    Option/Alt + F zooms to the selection;
+    Option/Alt + F zooms to the selection; Space starts and stops playback;
     Command + Option / Ctrl + Alt + ] and [ change waveform height; Control + Up and Down on macOS,
     Ctrl + Up and Down elsewhere, change track height; Command/Ctrl + A selects all clips; Home and
     End scroll to the ends. Arrows move the keyboard cursor, Shift + arrows extend the selection,

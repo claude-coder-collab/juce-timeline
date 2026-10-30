@@ -33,7 +33,7 @@ Clips draw waveforms when their `ClipInfo::source` is set and the timeline has a
 
 `clipsInRange` should not scan the whole track; keep clips sorted by start. `clipSpans` and `adjacentClip` are optional but keep zoomed-out views and keyboard navigation fast. Add `markersInRange` and `timelineSelection` to show markers and the model's timeline selection; report their changes with `MarkersChanged`.
 
-Selection is per view and kept by id across model changes. Click clips or track headers (Shift adds, Command/Ctrl toggles), drag over empty space for a rubber band, or drag on the ruler for a time range; arrows, Return and Escape move a keyboard cursor between clips and tracks. For an overview strip, bind a second `Timeline` to the same model and call `setOverviewMode(true)`.
+Selection is per view and kept by id across model changes. Click clips or track headers (Command/Ctrl toggles, Shift selects a range from the cursor), drag over empty space or Shift + drag anywhere for a rubber band, or drag on the ruler for a time range; arrows, Return and Escape move a keyboard cursor between clips and tracks. Selecting clips also selects their tracks. Space calls `onPlayStop`; playback is up to you. For an overview strip, bind a second `Timeline` to the same model and call `setOverviewMode(true)`.
 
 Customise headers with `setTrackHeaderFactory` and a `TrackHeader` subclass, drawing by deriving your LookAndFeel from `jtimeline::TimelineLookAndFeelMethods`, and colours with `Timeline::ColourIds`.
 

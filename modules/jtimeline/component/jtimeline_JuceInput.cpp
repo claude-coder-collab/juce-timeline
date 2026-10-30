@@ -51,8 +51,6 @@ KeyAction keyActionFor(const juce::KeyPress& key)
 
 SelectMode selectModeFrom(const juce::ModifierKeys& modifiers)
 {
-    if (modifiers.isShiftDown())
-        return SelectMode::add;
     if (modifiers.isCommandDown())
         return SelectMode::toggle;
     return SelectMode::replace;

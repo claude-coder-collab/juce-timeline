@@ -35,7 +35,10 @@ void TrackHeader::mouseDown(const juce::MouseEvent& event)
     if (timeline == nullptr)
         return;
     timeline->focusFromClick();
-    timeline->selectTrack(trackId, selectModeFrom(event.mods));
+    if (event.mods.isShiftDown())
+        timeline->extendTrackSelection(trackId);
+    else
+        timeline->selectTrack(trackId, selectModeFrom(event.mods));
 }
 
 std::unique_ptr<juce::AccessibilityHandler> TrackHeader::createAccessibilityHandler()
