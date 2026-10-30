@@ -82,6 +82,7 @@ void Timeline::refresh()
     readTimeline();
     readTracks();
     readMarkers();
+    selectedClipSpan.reset();
     trackClips.clear();
     clipInfos.clear();
     overviewSpans.clear();
@@ -171,6 +172,7 @@ void Timeline::notifierDestroyed(TimelineNotifier& destroyedNotifier)
 
 void Timeline::clipsChanged(std::span<const ClipId> ids)
 {
+    selectedClipSpan.reset();
     validateSelection(ids);
     clipArea->proxiesNeedUpdate();
     if (overview)
@@ -845,7 +847,7 @@ void Timeline::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWh
     if (action.zoomAtPointerSteps != 0.0)
         next = next.zoomedAround(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtPointerSteps, wheel::zoomFactorPerNotch)), pointerX);
     if (action.zoomAtEditCursorSteps != 0.0)
-        next = next.zoomedAroundSample(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtEditCursorSteps, wheel::zoomFactorPerNotch)), getEditCursor(), clipAreaWidth());
+        next = next.zoomedAroundSample(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtEditCursorSteps, wheel::zoomFactorPerNotch)), wheelZoomAnchor(), clipAreaWidth());
     setMapping(next);
     if (action.waveformZoomSteps != 0.0)
         setWaveformScale(waveformScale * std::pow(wheel::waveformFactorPerStep, action.waveformZoomSteps));
@@ -876,6 +878,9 @@ bool Timeline::keyPressed(const juce::KeyPress& key)
             return true;
         case KeyAction::zoomToFit:
             zoomToFit();
+            return true;
+        case KeyAction::zoomToSelection:
+            zoomToSelection();
             return true;
         case KeyAction::waveformTaller:
             setWaveformScale(waveformScale * wheel::waveformFactorPerStep);
@@ -1012,9 +1017,12 @@ void Timeline::selectAllClips()
 {
     if (!model.isComplete() || length <= 0)
         return;
+    const auto onSelectedTracks = !selection.getTracks().empty();
     std::vector<ClipId> all;
     for (const auto& track : tracks)
     {
+        if (onSelectedTracks && !selection.contains(track.id))
+            continue;
         const auto ids = model.clipsInRange(track.id, 0, length);
         all.insert(all.end(), ids.begin(), ids.end());
     }
@@ -1037,24 +1045,41 @@ void Timeline::zoomToSelection()
         setVisibleRange(*range);
         return;
     }
-    if (!model.isComplete())
-        return;
-    std::optional<SampleRange> span;
-    for (const auto clip : selection.getClips())
-    {
-        const auto* cached = cachedClip(clip);
-        const auto info = cached != nullptr ? std::optional{ *cached } : model.clipInfo(clip);
-        if (!info)
-            continue;
-        const auto range = normalised(*info).range();
-        span = span ? SampleRange{ .start = std::min(span->start, range.start), .end = std::max(span->end, range.end) } : range;
-    }
-    if (span)
+    if (const auto span = getSelectedClipSpan())
         setVisibleRange(*span);
+}
+
+std::optional<SampleRange> Timeline::getSelectedClipSpan()
+{
+    if (selectedClipSpan)
+        return *selectedClipSpan;
+    std::optional<SampleRange> span;
+    if (model.isComplete())
+    {
+        for (const auto clip : selection.getClips())
+        {
+            const auto* cached = cachedClip(clip);
+            const auto info = cached != nullptr ? std::optional{ *cached } : model.clipInfo(clip);
+            if (!info)
+                continue;
+            const auto range = normalised(*info).range();
+            span = span ? SampleRange{ .start = std::min(span->start, range.start), .end = std::max(span->end, range.end) } : range;
+        }
+    }
+    selectedClipSpan = span;
+    return span;
+}
+
+SamplePosition Timeline::wheelZoomAnchor()
+{
+    if (const auto span = getSelectedClipSpan())
+        return span->start + (span->length() / 2);
+    return getEditCursor();
 }
 
 void Timeline::selectionChanged()
 {
+    selectedClipSpan.reset();
     clipArea->repaint();
     ruler->repaint();
     headers->repaintHeaders();

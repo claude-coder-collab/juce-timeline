@@ -276,6 +276,7 @@ bool WaveformDemo::keyPressed(const juce::KeyPress& key)
         case jtimeline::KeyAction::extendDown:
         case jtimeline::KeyAction::cursorEnter:
         case jtimeline::KeyAction::cursorEscape:
+        case jtimeline::KeyAction::zoomToSelection:
             break;
     }
     return false;

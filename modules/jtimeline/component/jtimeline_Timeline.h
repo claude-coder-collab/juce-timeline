@@ -38,7 +38,8 @@ class Ruler;
 
     Wheel, trackpad and key bindings follow Pro Tools' defaults (see keys::actionFor and
     wheel::actionFor). Horizontal zooms not anchored at the pointer are anchored at the edit
-    cursor: the start of the time selection, else the playhead.
+    cursor: the start of the time selection, else the playhead. The Option/Alt + wheel zoom is
+    anchored at the centre of the selected clips instead, when clips are selected.
 
     Clips and tracks are selected by clicking (Shift adds, Command/Ctrl toggles), by dragging a
     rubber band over empty space, by Command/Ctrl + A and by keyboard navigation; a drag on the
@@ -183,12 +184,14 @@ public:
     void selectClip(ClipId clip, SelectMode mode);
     /** Selects a track as a click on its header would, and moves the keyboard cursor to it. */
     void selectTrack(TrackId track, SelectMode mode);
-    /** Selects every clip, querying each track over the whole timeline. */
+    /** Selects every clip on the selected tracks, or on every track if none is selected, querying each over the whole timeline. */
     void selectAllClips();
     /** Deselects every clip and track and clears the time selection. */
     void clearSelection();
     /** Zooms and scrolls to the time selection, else to the span of the selected clips. */
     void zoomToSelection();
+    /** Returns the span from the earliest start to the latest end of the selected clips, if any are selected. */
+    [[nodiscard]] std::optional<SampleRange> getSelectedClipSpan();
 
     /** Returns the keyboard cursor. */
     [[nodiscard]] const KeyboardCursor& getKeyboardCursor() const { return keyboardCursor; }
@@ -326,6 +329,7 @@ private:
     void releaseUnusedWaveforms();
 
     void selectionChanged();
+    [[nodiscard]] SamplePosition wheelZoomAnchor();
     void validateSelection(std::optional<std::span<const ClipId>> changedClips);
     void validateCursor();
     void cursorChanged();
@@ -389,6 +393,7 @@ private:
     std::function<std::unique_ptr<TrackHeader>()> headerFactory;
 
     Selection selection;
+    std::optional<std::optional<SampleRange>> selectedClipSpan;
     KeyboardCursor keyboardCursor;
     std::optional<SampleRange> timelineSelection;
     struct MarkerCache

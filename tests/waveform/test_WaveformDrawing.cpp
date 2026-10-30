@@ -128,3 +128,28 @@ TEST_CASE("WaveformView shows ready-made and cached peaks", "[view]")
     view.setColour(jwaveform::WaveformView::waveformColourId, juce::Colours::red);
     CHECK(view.resolveColour(jwaveform::WaveformView::waveformColourId) == juce::Colours::red);
 }
+
+TEST_CASE("Waveform columns are snapped to physical pixels at fractional positions and scales", "[drawing]")
+{
+    const auto data = squareData(0.3f, 1);
+    for (const auto scale : { 1.0f, 2.0f })
+    {
+        const auto size = static_cast<int>(100.0f * scale);
+        const juce::Image image{ juce::Image::ARGB, size, size, true };
+        {
+            juce::Graphics g{ image };
+            g.addTransform(juce::AffineTransform::scale(scale));
+            WaveformStyle style;
+            style.colour = juce::Colours::white;
+            jwaveform::drawWaveform(g, { 10.3f, 5.7f, 80.6f, 60.2f }, *data, 0.0, static_cast<double>(data->getLength()), style);
+        }
+        auto paintedCount = 0;
+        auto partial = 0;
+        for (auto y = 0; y < size; ++y)
+            for (auto x = 0; x < size; ++x)
+                if (const auto alpha = image.getPixelAt(x, y).getAlpha(); alpha > 0)
+                    ++(alpha == 255 ? paintedCount : partial);
+        CHECK(paintedCount > 0);
+        CHECK(partial == 0);
+    }
+}

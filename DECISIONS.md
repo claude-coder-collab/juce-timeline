@@ -126,3 +126,13 @@
 - **Accessibility handlers need a window.** JUCE creates them only for components on a peer, so the accessibility test puts the timeline on the desktop.
 - **Demo answers `adjacentClip`.** It shows the intended model shape; the doubling-window fallback is covered by unit tests.
 - **"Timeline selection", not "loop range".** Requested. It is the model's range (as in Pro Tools' timeline selection), whatever the application uses it for; the view's ruler-drag range stays the "time selection".
+
+## 2026-10-30 — Milestone 5 QA feedback
+
+- **No group badge; square audio clips, rounded groups.** Requested. The corner shape alone tells groups apart, with the heavier outline.
+- **Clip names overlay the waveform.** Requested, so the waveform is centred in the clip; a 1 px shadow keeps the name legible.
+- **Option/Alt + F zooms to the selection.** Requested; Pro Tools users know it.
+- **Select all is scoped to selected tracks.** Requested: with tracks selected, Command/Ctrl + A selects their clips only.
+- **Option/Alt + wheel zooms around the selected clips.** Requested. Only that gesture changes; keys keep the edit cursor, since the user asked only for the wheel. The span is cached because select-all can hold thousands of clips and wheel events are frequent.
+- **Waveform columns snapped to physical pixels.** Columns were placed relative to the clip's fractional left edge and straddled physical pixels, so anti-aliasing striped dense waveforms and dotted quiet ones.
+

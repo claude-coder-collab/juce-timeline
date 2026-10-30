@@ -25,11 +25,18 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
     const auto scale = static_cast<double>(g.getInternalContext().getPhysicalPixelScaleFactor());
     const auto pixelScale = scale > 0.0 ? scale : 1.0;
     const auto columnWidth = 1.0 / pixelScale;
+    const auto snapDown = [pixelScale](double value) { return std::floor((value * pixelScale) + 1.0e-6) / pixelScale; };
+    const auto snapUp = [pixelScale](double value) { return std::ceil((value * pixelScale) - 1.0e-6) / pixelScale; };
+
+    const auto firstColumn = std::max(std::floor(static_cast<double>(visible.getX()) * pixelScale), std::ceil((static_cast<double>(area.getX()) * pixelScale) - 1.0e-6));
+    const auto endColumn = std::min(std::ceil(static_cast<double>(visible.getRight()) * pixelScale), std::floor((static_cast<double>(area.getRight()) * pixelScale) + 1.0e-6));
+    if (!(endColumn > firstColumn))
+        return;
+    const auto columnCount = static_cast<std::size_t>(endColumn - firstColumn);
+    const auto firstX = firstColumn * columnWidth;
     const auto samplesPerPixel = (sourceEnd - sourceStart) / static_cast<double>(area.getWidth());
     const auto samplesPerColumn = samplesPerPixel * columnWidth;
-    const auto firstX = std::floor(static_cast<double>(visible.getX() - area.getX()) * pixelScale) * columnWidth;
-    const auto columnCount = static_cast<std::size_t>(std::ceil((static_cast<double>(visible.getRight() - area.getX()) - firstX) * pixelScale));
-    const auto firstSample = sourceStart + (firstX * samplesPerPixel);
+    const auto firstSample = sourceStart + ((firstX - static_cast<double>(area.getX())) * samplesPerPixel);
 
     std::vector<ColumnPeak> columns(columnCount);
     std::vector<float> gains(columnCount);
@@ -37,19 +44,18 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
         gains[x] = static_cast<float>(style.envelope.gainAt(firstSample + ((static_cast<double>(x) + 0.5) * samplesPerColumn)) * style.displayScale);
 
     const auto lanes = laneCountFor(data.getNumChannels(), area.getHeight(), style);
-    const auto laneHeight = area.getHeight() / static_cast<float>(lanes);
-    const auto minHeight = static_cast<float>(columnWidth);
+    const auto laneHeight = static_cast<double>(area.getHeight()) / static_cast<double>(lanes);
     juce::RectangleList<float> rects;
     for (auto lane = 0; lane < lanes; ++lane)
     {
-        const auto top = area.getY() + (laneHeight * static_cast<float>(lane));
-        const auto centre = top + (laneHeight / 2.0f);
-        const auto half = laneHeight / 2.0f;
+        const auto top = static_cast<double>(area.getY()) + (laneHeight * static_cast<double>(lane));
+        const auto half = laneHeight / 2.0;
+        const auto centre = snapDown(top + half);
 
         if (!style.centreLineColour.isTransparent())
         {
             g.setColour(style.centreLineColour);
-            g.fillRect(visible.getX(), centre - (minHeight / 2.0f), visible.getWidth(), minHeight);
+            g.fillRect(juce::Rectangle<double>{ firstX, centre, static_cast<double>(columnCount) * columnWidth, columnWidth }.toFloat());
         }
 
         computeColumns(data, lanes == 1 ? allChannels : lane, firstSample, samplesPerColumn, columns);
@@ -60,12 +66,11 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
             const auto& column = columns[x];
             if (!column.valid)
                 continue;
-            const auto high = std::clamp(column.max * gains[x], -1.0f, 1.0f);
-            const auto low = std::clamp(column.min * gains[x], -1.0f, 1.0f);
-            const auto y1 = centre - (high * half);
-            const auto y2 = centre - (low * half);
-            const auto left = area.getX() + static_cast<float>(firstX + (static_cast<double>(x) * columnWidth));
-            rects.addWithoutMerging({ left, y1, static_cast<float>(columnWidth), std::max(y2 - y1, minHeight) });
+            const auto high = static_cast<double>(std::clamp(column.max * gains[x], -1.0f, 1.0f));
+            const auto low = static_cast<double>(std::clamp(column.min * gains[x], -1.0f, 1.0f));
+            const auto y1 = snapDown(centre - (high * half));
+            const auto y2 = std::max(snapUp(centre - (low * half)), y1 + columnWidth);
+            rects.addWithoutMerging(juce::Rectangle<double>{ firstX + (static_cast<double>(x) * columnWidth), y1, columnWidth, y2 - y1 }.toFloat());
         }
         g.setColour(style.colour);
         g.fillRectList(rects);

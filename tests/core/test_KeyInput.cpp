@@ -29,6 +29,16 @@ TEST_CASE("Option/Alt + A zooms to fit and Command/Ctrl + A selects all", "[keys
     CHECK(keys::actionFor({ .character = U'a', .alt = true, .control = true }, true) == KeyAction::none);
 }
 
+TEST_CASE("Option/Alt + F zooms to the selection", "[keys]")
+{
+    for (const auto isMac : { true, false })
+    {
+        CHECK(keys::actionFor({ .character = U'F', .alt = true }, isMac) == KeyAction::zoomToSelection);
+        CHECK(keys::actionFor({ .character = U'f' }, isMac) == KeyAction::none);
+        CHECK(keys::actionFor({ .character = U'f', .shift = true, .alt = true }, isMac) == KeyAction::none);
+    }
+}
+
 TEST_CASE("Brackets zoom with Command and change waveform height with Command + Option", "[keys]")
 {
     CHECK(keys::actionFor({ .character = U']', .command = true }, true) == KeyAction::zoomIn);

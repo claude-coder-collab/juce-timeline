@@ -17,21 +17,10 @@ constexpr float cornerRadius = 3.0f;
 constexpr float bodyAlpha = 0.75f;
 constexpr float mutedAlpha = 0.35f;
 constexpr float nameHeight = 15.0f;
-constexpr float badgeSize = 9.0f;
 
 juce::Font smallFont(float height)
 {
     return juce::Font{ juce::FontOptions{ height } };
-}
-
-void drawGroupBadge(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
-{
-    const auto badge = juce::Rectangle<float>{ bounds.getRight() - badgeSize - 4.0f, bounds.getY() + 3.0f, badgeSize, badgeSize };
-    if (badge.getX() < bounds.getX() + 2.0f || badge.getBottom() > bounds.getBottom())
-        return;
-    g.setColour(colour);
-    g.drawRect(badge.withTrimmedRight(3.0f).withTrimmedBottom(3.0f), 1.0f);
-    g.drawRect(badge.withTrimmedLeft(3.0f).withTrimmedTop(3.0f), 1.0f);
 }
 
 }
@@ -65,48 +54,38 @@ void TimelineLookAndFeelMethods::drawTimelineClip(juce::Graphics& g, const Timel
     }
 
     const auto body = clip.bounds.reduced(0.5f, 0.5f);
+    const auto corner = group ? cornerRadius : 0.0f;
     g.setColour(fill.withMultipliedAlpha(bodyAlpha * dim));
-    g.fillRoundedRectangle(body, cornerRadius);
+    g.fillRoundedRectangle(body, corner);
 
-    const auto named = clip.tier == ClipTier::full && body.getHeight() >= nameHeight && info.name.isNotEmpty();
     if (clip.waveform.status != WaveformStatus::none)
-    {
-        auto area = juce::Rectangle<float>::leftTopRightBottom(clip.bounds.getX(), body.getY() + 1.0f, clip.bounds.getRight(), body.getBottom() - 1.0f);
-        if (named && area.getHeight() - nameHeight >= getTimelineMetrics(timeline).minWaveformHeight)
-            area.removeFromTop(nameHeight);
-        drawTimelineClipWaveform(g, timeline, clip, area);
-    }
+        drawTimelineClipWaveform(g, timeline, clip, juce::Rectangle<float>::leftTopRightBottom(clip.bounds.getX(), body.getY() + 1.0f, clip.bounds.getRight(), body.getBottom() - 1.0f));
     if (clip.tier == ClipTier::full && !group)
         drawTimelineClipFades(g, timeline, clip, body);
 
     const auto outline = timeline.resolveColour(Timeline::clipOutlineColourId);
     g.setColour(group ? clip.colour.brighter(0.6f).withMultipliedAlpha(dim) : outline);
-    g.drawRoundedRectangle(body, cornerRadius, group ? 2.0f : 1.0f);
+    g.drawRoundedRectangle(body, corner, group ? 2.0f : 1.0f);
     if (clip.selected)
     {
         g.setColour(selection);
-        g.drawRoundedRectangle(body.reduced(0.5f), cornerRadius, 2.0f);
+        g.drawRoundedRectangle(body.reduced(0.5f), corner, 2.0f);
     }
     if (clip.cursor && body.getWidth() > 8.0f && body.getHeight() > 8.0f)
     {
         g.setColour(timeline.resolveColour(Timeline::keyboardCursorColourId));
-        g.drawRoundedRectangle(body.reduced(3.0f), cornerRadius, 1.5f);
+        g.drawRoundedRectangle(body.reduced(3.0f), corner, 1.5f);
     }
 
-    if (clip.tier != ClipTier::full)
-        return;
-    const auto textColour = timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(dim);
-    if (group)
-        drawGroupBadge(g, body, textColour);
-    if (!named)
+    if (clip.tier != ClipTier::full || body.getHeight() < nameHeight || info.name.isEmpty())
         return;
     auto text = body.reduced(4.0f, 1.0f).withHeight(nameHeight);
     if (clip.cutLeft)
         text.setLeft(std::max(text.getX(), 4.0f));
-    if (group)
-        text.removeFromRight(badgeSize + 4.0f);
-    g.setColour(textColour);
     g.setFont(smallFont(12.0f));
+    g.setColour(juce::Colours::black.withAlpha(0.5f * dim));
+    g.drawText(info.name, text.translated(0.0f, 1.0f), juce::Justification::centredLeft, true);
+    g.setColour(timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(dim));
     g.drawText(info.name, text, juce::Justification::centredLeft, true);
 }
 

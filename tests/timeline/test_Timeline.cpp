@@ -482,6 +482,27 @@ TEST_CASE("Timeline selects clips and tracks by clicking, rubber band and keyboa
     timeline.zoomToSelection();
     CHECK(timeline.getVisibleRange().start == second);
     CHECK(timeline.getVisibleRange().end == 5 * second);
+
+    timeline.selectTrack(middle, jtimeline::SelectMode::replace);
+    CHECK(timeline.keyPressed(juce::KeyPress{ 'a', juce::ModifierKeys::commandModifier, 0 }));
+    CHECK(timeline.getSelectedClips() == std::vector{ c });
+    CHECK(timeline.getSelectedTracks() == std::vector{ middle });
+
+    timeline.setSelectedClips(std::vector{ d });
+    timeline.setVisibleRange({ .start = 0, .end = 10 * second });
+    CHECK(timeline.keyPressed(juce::KeyPress{ 'f', juce::ModifierKeys::altModifier, 0 }));
+    CHECK(timeline.getVisibleRange().start == 6 * second);
+    CHECK(timeline.getVisibleRange().end == 7 * second);
+
+    timeline.setVisibleRange({ .start = 0, .end = 10 * second });
+    timeline.setSelectedClips(std::vector{ c, d });
+    const auto anchor = 4 * second;
+    const auto before = timeline.getMapping().toPixel(anchor);
+    const auto spp = timeline.getMapping().getSamplesPerPixel();
+    const juce::MouseEvent event{ juce::Desktop::getInstance().getMainMouseSource(), { 700.0f, 100.0f }, juce::ModifierKeys::altModifier, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &timeline, &timeline, juce::Time::getCurrentTime(), { 700.0f, 100.0f }, juce::Time::getCurrentTime(), 1, false };
+    timeline.mouseWheelMove(event, juce::MouseWheelDetails{ .deltaX = 0.0f, .deltaY = 0.1f, .isReversed = false, .isSmooth = false, .isInertial = false });
+    CHECK(timeline.getMapping().getSamplesPerPixel() < spp);
+    CHECK(timeline.getMapping().toPixel(anchor) == Approx(before));
 }
 
 TEST_CASE("Timeline keeps the selection across model changes while the ids exist", "[timeline][selection]")
