@@ -10,6 +10,7 @@ namespace jtimeline
 TrackHeader::TrackHeader()
 {
     setWantsKeyboardFocus(false);
+    setFocusContainerType(FocusContainerType::focusContainer);
 }
 
 void TrackHeader::trackChanged()

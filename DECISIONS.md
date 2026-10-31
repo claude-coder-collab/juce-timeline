@@ -141,4 +141,5 @@
 - **Selected tracks follow selection gestures on clips.** Requested, so track height keys act on the tracks of selected clips. API setters stay literal so applications can set any combination.
 - **One zoom anchor for wheel and keys.** Requested: T/R and Command/Ctrl + ]/[ also zoom around the selected clips. `zoomAtEditCursor` became `zoomAtAnchor`.
 - **Space reports, the application plays.** The view never plays audio, so Space only calls `onPlayStop`.
+- **Accessibility tree ordered by track.** QA found tracks hard to reach with VoiceOver: JUCE gives accessibility children only to focus containers, so the whole window was one flat list of every header followed by every clip. The timeline is now a focus container listing header and clip group per track, and each track's clips sit in their own group.
 

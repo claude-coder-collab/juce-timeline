@@ -59,6 +59,7 @@ public:
     void update();
     void clear();
     void repaintHeaders();
+    [[nodiscard]] TrackHeader* headerFor(TrackId track) const;
     [[nodiscard]] int getNumPooled() const { return static_cast<int>(pool.size()); }
 
 private:
@@ -79,6 +80,37 @@ public:
 private:
     Timeline& timeline; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
     ClipId clip{};
+};
+
+class LaneProxy final : public juce::Component
+{
+public:
+    LaneProxy();
+
+    void bind(TrackId id, const juce::String& trackName);
+    [[nodiscard]] TrackId getTrackId() const { return track; }
+    ClipProxy& proxyAt(Timeline& timeline, std::size_t index);
+    void hideFrom(std::size_t index);
+    [[nodiscard]] std::vector<ClipProxy*> getVisibleProxies() const;
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+
+private:
+    TrackId track{};
+    std::vector<std::unique_ptr<ClipProxy>> proxies;
+};
+
+class TimelineTraverser final : public juce::ComponentTraverser
+{
+public:
+    explicit TimelineTraverser(Timeline& owner);
+
+    juce::Component* getDefaultComponent(juce::Component* parent) override;
+    juce::Component* getNextComponent(juce::Component* current) override;
+    juce::Component* getPreviousComponent(juce::Component* current) override;
+    std::vector<juce::Component*> getAllComponents(juce::Component* parent) override;
+
+private:
+    Timeline& timeline; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
 };
 
 class ClipArea final : public juce::Component, private juce::AsyncUpdater
@@ -103,6 +135,7 @@ public:
     void proxiesNeedUpdate();
     void updateProxies();
     [[nodiscard]] std::vector<ClipProxy*> getVisibleProxies() const;
+    [[nodiscard]] LaneProxy* laneFor(TrackId track) const;
 
 private:
     void handleAsyncUpdate() override;
@@ -113,7 +146,7 @@ private:
     void updateBand(juce::Rectangle<float> next);
 
     Timeline& timeline; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
-    std::vector<std::unique_ptr<ClipProxy>> proxies;
+    std::vector<std::unique_ptr<LaneProxy>> lanes;
     std::optional<juce::Point<float>> bandStart;
     bool banding = false;
     juce::Rectangle<float> band;

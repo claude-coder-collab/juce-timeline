@@ -669,6 +669,18 @@ TEST_CASE("Timeline exposes visible clips and tracks to accessibility clients", 
     first->grabFocus();
     CHECK(timeline.getSelectedClips() == std::vector{ named, other });
 
+    auto* timelineHandler = timeline.getAccessibilityHandler();
+    REQUIRE(timelineHandler != nullptr);
+    const auto children = timelineHandler->getChildren();
+    REQUIRE(children.size() >= 2);
+    CHECK(children[0]->getTitle() == "Track 1");
+    CHECK(children[1]->getTitle() == "Track 1 clips");
+    const auto clips = children[1]->getChildren();
+    REQUIRE(clips.size() == 2);
+    CHECK(clips[0]->getTitle() == "Take 1");
+    CHECK(clips[0]->getParent() == children[1]);
+    CHECK(children[1]->getParent() == timelineHandler);
+
     timeline.setVisibleRange({ .start = 40 * second, .end = 60 * second });
     area.updateProxies();
     CHECK(area.getVisibleProxies().size() == 1);

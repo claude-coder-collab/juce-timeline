@@ -43,6 +43,7 @@ Timeline::Timeline() :
     clipArea(std::make_unique<detail::ClipArea>(*this))
 {
     setWantsKeyboardFocus(true);
+    setFocusContainerType(FocusContainerType::focusContainer);
     setTitle("Timeline");
     for (auto* child : std::initializer_list<juce::Component*>{ ruler.get(), headers.get(), clipArea.get(), &horizontalBar, &verticalBar })
         addAndMakeVisible(child);
@@ -1387,6 +1388,11 @@ void Timeline::focusLost(FocusChangeType /*cause*/)
 std::unique_ptr<juce::AccessibilityHandler> Timeline::createAccessibilityHandler()
 {
     return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::group);
+}
+
+std::unique_ptr<juce::ComponentTraverser> Timeline::createFocusTraverser()
+{
+    return std::make_unique<detail::TimelineTraverser>(*this);
 }
 
 //==============================================================================

@@ -26,6 +26,7 @@ namespace detail
 class ClipArea;
 class HeaderArea;
 class Ruler;
+class TimelineTraverser;
 }
 
 //==============================================================================
@@ -298,6 +299,8 @@ public:
     void focusLost(FocusChangeType cause) override;
     /** @internal */
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
+    /** @internal */
+    std::unique_ptr<juce::ComponentTraverser> createFocusTraverser() override;
 
     /** @internal Takes keyboard focus after a click on the timeline or one of its parts, if it is showing. */
     void focusFromClick();
@@ -308,6 +311,7 @@ private:
     friend class detail::ClipArea;
     friend class detail::HeaderArea;
     friend class detail::Ruler;
+    friend class detail::TimelineTraverser;
 
     struct Track
     {

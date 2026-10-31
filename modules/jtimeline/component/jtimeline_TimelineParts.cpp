@@ -162,6 +162,12 @@ void HeaderArea::clear()
     removeAllChildren();
 }
 
+TrackHeader* HeaderArea::headerFor(TrackId track) const
+{
+    const auto found = bound.find(track);
+    return found != bound.end() ? found->second : nullptr;
+}
+
 void HeaderArea::repaintHeaders()
 {
     for (const auto& [id, header] : bound)
@@ -243,12 +249,103 @@ std::unique_ptr<juce::AccessibilityHandler> ClipProxy::createAccessibilityHandle
 }
 
 //==============================================================================
+LaneProxy::LaneProxy()
+{
+    setInterceptsMouseClicks(false, false);
+    setWantsKeyboardFocus(false);
+    setFocusContainerType(FocusContainerType::focusContainer);
+}
+
+void LaneProxy::bind(TrackId id, const juce::String& trackName)
+{
+    track = id;
+    const auto title = trackName + " clips";
+    if (getTitle() != title)
+        setTitle(title);
+}
+
+ClipProxy& LaneProxy::proxyAt(Timeline& timeline, std::size_t index)
+{
+    while (proxies.size() <= index)
+    {
+        proxies.push_back(std::make_unique<ClipProxy>(timeline));
+        addChildComponent(*proxies.back());
+    }
+    return *proxies[index];
+}
+
+void LaneProxy::hideFrom(std::size_t index)
+{
+    for (; index < proxies.size(); ++index)
+        proxies[index]->setVisible(false);
+}
+
+std::vector<ClipProxy*> LaneProxy::getVisibleProxies() const
+{
+    std::vector<ClipProxy*> visible;
+    for (const auto& proxy : proxies)
+        if (proxy->isVisible())
+            visible.push_back(proxy.get());
+    std::ranges::sort(visible, {}, [](const ClipProxy* proxy) { return proxy->getX(); });
+    return visible;
+}
+
+std::unique_ptr<juce::AccessibilityHandler> LaneProxy::createAccessibilityHandler()
+{
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::list);
+}
+
+//==============================================================================
+TimelineTraverser::TimelineTraverser(Timeline& owner) :
+    timeline(owner)
+{
+}
+
+std::vector<juce::Component*> TimelineTraverser::getAllComponents(juce::Component* /*parent*/)
+{
+    std::vector<juce::Component*> components;
+    if (timeline.overview)
+        return components;
+    const auto span = timeline.layout.visibleTracks(timeline.trackScroll, timeline.clipAreaHeight());
+    for (auto index = span.begin; index < span.end; ++index)
+    {
+        const auto id = timeline.tracks[static_cast<std::size_t>(index)].id;
+        if (auto* header = timeline.headers->headerFor(id); header != nullptr && header->isVisible())
+            components.push_back(header);
+        if (auto* lane = timeline.clipArea->laneFor(id))
+            components.push_back(lane);
+    }
+    components.push_back(&timeline.horizontalBar);
+    components.push_back(&timeline.verticalBar);
+    return components;
+}
+
+juce::Component* TimelineTraverser::getDefaultComponent(juce::Component* parent)
+{
+    const auto all = getAllComponents(parent);
+    return all.empty() ? nullptr : all.front();
+}
+
+juce::Component* TimelineTraverser::getNextComponent(juce::Component* current)
+{
+    const auto all = getAllComponents(nullptr);
+    const auto found = std::ranges::find(all, current);
+    return found != all.end() && std::next(found) != all.end() ? *std::next(found) : nullptr;
+}
+
+juce::Component* TimelineTraverser::getPreviousComponent(juce::Component* current)
+{
+    const auto all = getAllComponents(nullptr);
+    const auto found = std::ranges::find(all, current);
+    return found != all.end() && found != all.begin() ? *std::prev(found) : nullptr;
+}
+
+//==============================================================================
 ClipArea::ClipArea(Timeline& owner) :
     timeline(owner)
 {
     setWantsKeyboardFocus(false);
     setOpaque(true);
-    setTitle("Clips");
 }
 
 ClipArea::~ClipArea()
@@ -258,7 +355,7 @@ ClipArea::~ClipArea()
 
 std::unique_ptr<juce::AccessibilityHandler> ClipArea::createAccessibilityHandler()
 {
-    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::list);
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::ignored);
 }
 
 void ClipArea::paint(juce::Graphics& g)
@@ -284,6 +381,7 @@ void ClipArea::updateProxies()
 {
     cancelPendingUpdate();
     std::size_t used = 0;
+    std::size_t lanesUsed = 0;
     if (!timeline.overview && !timeline.tracks.empty() && getWidth() > 0)
     {
         const auto& mapping = timeline.mapping;
@@ -296,7 +394,18 @@ void ClipArea::updateProxies()
             const auto& clips = timeline.clipsFor(index, visible);
             if (clips.dense)
                 continue;
-            const auto lane = timeline.laneBounds(index).reduced(0.0f, metrics.clipInset);
+            const auto& track = timeline.tracks[static_cast<std::size_t>(index)];
+            const auto laneBounds = timeline.laneBounds(index).getSmallestIntegerContainer().getIntersection(getLocalBounds());
+            if (laneBounds.isEmpty())
+                continue;
+            if (lanesUsed == lanes.size())
+            {
+                lanes.push_back(std::make_unique<LaneProxy>());
+                addChildComponent(*lanes.back());
+            }
+            auto& lane = *lanes[lanesUsed];
+            std::size_t inLane = 0;
+            const auto body = timeline.laneBounds(index).reduced(0.0f, metrics.clipInset);
             for (const auto id : clips.order)
             {
                 const auto* info = timeline.cachedClip(id);
@@ -308,35 +417,51 @@ void ClipArea::updateProxies()
                     continue;
                 const auto left = std::max(mapping.toPixel(range.start), 0.0);
                 const auto right = std::min(mapping.toPixel(range.end), width);
-                const auto bounds = juce::Rectangle<float>::leftTopRightBottom(static_cast<float>(left), lane.getY(), static_cast<float>(right), lane.getBottom()).getSmallestIntegerContainer().getIntersection(getLocalBounds());
+                const auto bounds = juce::Rectangle<float>::leftTopRightBottom(static_cast<float>(left), body.getY(), static_cast<float>(right), body.getBottom()).getSmallestIntegerContainer().getIntersection(laneBounds);
                 if (bounds.isEmpty())
                     continue;
-                if (used == proxies.size())
-                {
-                    proxies.push_back(std::make_unique<ClipProxy>(timeline));
-                    addChildComponent(*proxies.back());
-                }
-                auto& proxy = *proxies[used++];
+                auto& proxy = lane.proxyAt(timeline, inLane++);
                 proxy.bind(id, *info);
-                if (proxy.getBounds() != bounds)
-                    proxy.setBounds(bounds);
+                const auto local = bounds - laneBounds.getPosition();
+                if (proxy.getBounds() != local)
+                    proxy.setBounds(local);
                 proxy.setVisible(true);
-                if (used == maxProxies)
+                if (++used == maxProxies)
                     break;
             }
+            lane.hideFrom(inLane);
+            if (inLane == 0)
+                continue;
+            lane.bind(track.id, timeline.trackName(track.id));
+            if (lane.getBounds() != laneBounds)
+                lane.setBounds(laneBounds);
+            lane.setVisible(true);
+            ++lanesUsed;
         }
     }
-    for (auto index = used; index < proxies.size(); ++index)
-        proxies[index]->setVisible(false);
+    for (auto index = lanesUsed; index < lanes.size(); ++index)
+    {
+        lanes[index]->hideFrom(0);
+        lanes[index]->setVisible(false);
+    }
 }
 
 std::vector<ClipProxy*> ClipArea::getVisibleProxies() const
 {
     std::vector<ClipProxy*> visible;
-    for (const auto& proxy : proxies)
-        if (proxy->isVisible())
-            visible.push_back(proxy.get());
+    for (const auto& lane : lanes)
+        if (lane->isVisible())
+            for (auto* proxy : lane->getVisibleProxies())
+                visible.push_back(proxy);
     return visible;
+}
+
+LaneProxy* ClipArea::laneFor(TrackId track) const
+{
+    for (const auto& lane : lanes)
+        if (lane->isVisible() && lane->getTrackId() == track)
+            return lane.get();
+    return nullptr;
 }
 
 void ClipArea::paintContents(juce::Graphics& g, TimelineLookAndFeelMethods& methods)
