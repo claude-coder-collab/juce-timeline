@@ -37,6 +37,7 @@ private:
     juce::ComboBox scenario;
     juce::ComboBox format;
     juce::TextButton fit{ "Zoom to fit" };
+    juce::TextButton zoomSelection{ "Zoom to selection" };
     juce::TextButton play{ "Play" };
     juce::ToggleButton follow{ "Page follow" };
     juce::TextButton taller{ "Taller" };
@@ -48,6 +49,7 @@ private:
     juce::ToggleButton slowBuilds{ "Slow builds" };
     juce::Label hint;
     juce::Label status;
+    juce::Label selectionStatus;
     double playStartTime = 0.0;
     jtimeline::SamplePosition playStartPosition = 0;
 };

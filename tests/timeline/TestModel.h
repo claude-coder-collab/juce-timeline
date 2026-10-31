@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <optional>
 #include <vector>
 
 class TestModel
@@ -16,6 +17,7 @@ public:
         int clipsInRange = 0;
         int clipSpans = 0;
         int trackInfo = 0;
+        int markers = 0;
     };
 
     std::vector<jtimeline::TrackId> tracks;
@@ -24,6 +26,9 @@ public:
     std::unique_ptr<jtimeline::TimelineNotifier> notifier = std::make_unique<jtimeline::TimelineNotifier>();
     Counts counts;
     bool withSpans = true;
+    bool withMarkers = false;
+    std::vector<jtimeline::Marker> markers;
+    std::optional<jtimeline::SampleRange> timelineSelection;
 
     jtimeline::TrackId addTrack()
     {
@@ -70,6 +75,8 @@ public:
             .length = [this] { return length; },
             .adjacentClip = {},
             .clipSpans = {},
+            .markersInRange = {},
+            .timelineSelection = {},
             .notifier = notifier.get(),
         };
         if (withSpans)
@@ -82,6 +89,18 @@ public:
                         spans.push_back(info.range().intersection({ .start = start, .end = end }));
                 return jtimeline::mergeSpans(std::move(spans), minGap);
             };
+        }
+        if (withMarkers)
+        {
+            model.markersInRange = [this](jtimeline::SamplePosition start, jtimeline::SamplePosition end) {
+                ++counts.markers;
+                std::vector<jtimeline::Marker> result;
+                for (const auto& marker : markers)
+                    if (marker.position >= start && marker.position < end)
+                        result.push_back(marker);
+                return result;
+            };
+            model.timelineSelection = [this] { return timelineSelection; };
         }
         return model;
     }

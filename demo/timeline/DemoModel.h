@@ -4,6 +4,7 @@
 
 #include <jtimeline/jtimeline.h>
 
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -24,6 +25,7 @@ public:
     int addFiles(const juce::Array<juce::File>& files);
     [[nodiscard]] jtimeline::TimelineModel bind();
 
+    [[nodiscard]] std::vector<jtimeline::ClipId> clipsOnTracks(jtimeline::SampleRange range, std::size_t firstTrack, std::size_t count) const;
     void editRandomClips(int count);
     void addTrack();
     void removeTrack();
@@ -55,6 +57,9 @@ private:
     [[nodiscard]] Track* findTrack(jtimeline::TrackId id);
     [[nodiscard]] const Track* findTrack(jtimeline::TrackId id) const;
     [[nodiscard]] std::vector<jtimeline::ClipId> clipsInRange(jtimeline::TrackId id, jtimeline::SamplePosition start, jtimeline::SamplePosition end) const;
+    [[nodiscard]] std::optional<jtimeline::ClipId> adjacentClip(jtimeline::TrackId id, jtimeline::ClipId clip, jtimeline::Direction direction) const;
+    [[nodiscard]] std::vector<jtimeline::Marker> markersInRange(jtimeline::SamplePosition start, jtimeline::SamplePosition end) const;
+    void makeMarkers(int count, const juce::StringArray& names, std::optional<jtimeline::SampleRange> selection);
     void makeSources();
     void randomiseLevels(jtimeline::ClipInfo& info);
     void addStatusExamples();
@@ -66,6 +71,8 @@ private:
 
     std::vector<Track> tracks;
     std::unordered_map<jtimeline::ClipId, Clip> clips;
+    std::vector<jtimeline::Marker> markers;
+    std::optional<jtimeline::SampleRange> timelineSelection;
     jtimeline::SamplePosition length = 0;
     std::uint64_t nextId = 1;
     juce::Random random{ 7 };

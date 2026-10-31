@@ -17,21 +17,10 @@ constexpr float cornerRadius = 3.0f;
 constexpr float bodyAlpha = 0.75f;
 constexpr float mutedAlpha = 0.35f;
 constexpr float nameHeight = 15.0f;
-constexpr float badgeSize = 9.0f;
 
 juce::Font smallFont(float height)
 {
     return juce::Font{ juce::FontOptions{ height } };
-}
-
-void drawGroupBadge(juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
-{
-    const auto badge = juce::Rectangle<float>{ bounds.getRight() - badgeSize - 4.0f, bounds.getY() + 3.0f, badgeSize, badgeSize };
-    if (badge.getX() < bounds.getX() + 2.0f || badge.getBottom() > bounds.getBottom())
-        return;
-    g.setColour(colour);
-    g.drawRect(badge.withTrimmedRight(3.0f).withTrimmedBottom(3.0f), 1.0f);
-    g.drawRect(badge.withTrimmedLeft(3.0f).withTrimmedTop(3.0f), 1.0f);
 }
 
 }
@@ -41,9 +30,10 @@ TimelineMetrics TimelineLookAndFeelMethods::getTimelineMetrics(const Timeline& /
     return {};
 }
 
-void TimelineLookAndFeelMethods::drawTimelineLane(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> lane, TrackId /*track*/, const TrackInfo& /*info*/)
+void TimelineLookAndFeelMethods::drawTimelineLane(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> lane, TrackId track, const TrackInfo& /*info*/)
 {
-    g.setColour(timeline.resolveColour(Timeline::laneColourId));
+    const auto colour = timeline.resolveColour(Timeline::laneColourId);
+    g.setColour(timeline.isTrackSelected(track) ? colour.interpolatedWith(timeline.resolveColour(Timeline::selectionColourId), 0.08f) : colour);
     g.fillRect(lane);
     g.setColour(timeline.resolveColour(Timeline::separatorColourId));
     g.fillRect(lane.withTop(lane.getBottom() - 1.0f));
@@ -54,46 +44,48 @@ void TimelineLookAndFeelMethods::drawTimelineClip(juce::Graphics& g, const Timel
     const auto& info = *clip.info;
     const auto dim = info.muted ? mutedAlpha : 1.0f;
     const auto group = info.kind == ClipKind::group;
+    const auto selection = timeline.resolveColour(Timeline::selectionColourId);
+    const auto fill = clip.selected ? clip.colour.interpolatedWith(selection, 0.25f) : clip.colour;
     if (clip.tier == ClipTier::minimal)
     {
-        g.setColour(clip.colour.withMultipliedAlpha(dim));
+        g.setColour(fill.withMultipliedAlpha(dim));
         g.fillRect(clip.bounds);
         return;
     }
 
     const auto body = clip.bounds.reduced(0.5f, 0.5f);
-    g.setColour(clip.colour.withMultipliedAlpha(bodyAlpha * dim));
-    g.fillRoundedRectangle(body, cornerRadius);
+    const auto corner = group ? cornerRadius : 0.0f;
+    g.setColour(fill.withMultipliedAlpha(bodyAlpha * dim));
+    g.fillRoundedRectangle(body, corner);
 
-    const auto named = clip.tier == ClipTier::full && body.getHeight() >= nameHeight && info.name.isNotEmpty();
     if (clip.waveform.status != WaveformStatus::none)
-    {
-        auto area = juce::Rectangle<float>::leftTopRightBottom(clip.bounds.getX(), body.getY() + 1.0f, clip.bounds.getRight(), body.getBottom() - 1.0f);
-        if (named && area.getHeight() - nameHeight >= getTimelineMetrics(timeline).minWaveformHeight)
-            area.removeFromTop(nameHeight);
-        drawTimelineClipWaveform(g, timeline, clip, area);
-    }
+        drawTimelineClipWaveform(g, timeline, clip, juce::Rectangle<float>::leftTopRightBottom(clip.bounds.getX(), body.getY() + 1.0f, clip.bounds.getRight(), body.getBottom() - 1.0f));
     if (clip.tier == ClipTier::full && !group)
         drawTimelineClipFades(g, timeline, clip, body);
 
     const auto outline = timeline.resolveColour(Timeline::clipOutlineColourId);
     g.setColour(group ? clip.colour.brighter(0.6f).withMultipliedAlpha(dim) : outline);
-    g.drawRoundedRectangle(body, cornerRadius, group ? 2.0f : 1.0f);
+    g.drawRoundedRectangle(body, corner, group ? 2.0f : 1.0f);
+    if (clip.selected)
+    {
+        g.setColour(selection);
+        g.drawRoundedRectangle(body.reduced(0.5f), corner, 2.0f);
+    }
+    if (clip.cursor && body.getWidth() > 8.0f && body.getHeight() > 8.0f)
+    {
+        g.setColour(timeline.resolveColour(Timeline::keyboardCursorColourId));
+        g.drawRoundedRectangle(body.reduced(3.0f), corner, 1.5f);
+    }
 
-    if (clip.tier != ClipTier::full)
-        return;
-    const auto textColour = timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(dim);
-    if (group)
-        drawGroupBadge(g, body, textColour);
-    if (!named)
+    if (clip.tier != ClipTier::full || body.getHeight() < nameHeight || info.name.isEmpty())
         return;
     auto text = body.reduced(4.0f, 1.0f).withHeight(nameHeight);
     if (clip.cutLeft)
         text.setLeft(std::max(text.getX(), 4.0f));
-    if (group)
-        text.removeFromRight(badgeSize + 4.0f);
-    g.setColour(textColour);
     g.setFont(smallFont(12.0f));
+    g.setColour(juce::Colours::black.withAlpha(0.5f * dim));
+    g.drawText(info.name, text.translated(0.0f, 1.0f), juce::Justification::centredLeft, true);
+    g.setColour(timeline.resolveColour(Timeline::clipTextColourId).withMultipliedAlpha(dim));
     g.drawText(info.name, text, juce::Justification::centredLeft, true);
 }
 
@@ -215,6 +207,65 @@ void TimelineLookAndFeelMethods::drawTimelinePlayhead(juce::Graphics& g, const T
     g.fillPath(marker);
 }
 
+void TimelineLookAndFeelMethods::drawTimelineMarkerStrip(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const MarkerPaint> markers, std::optional<juce::Rectangle<float>> timelineSelection)
+{
+    g.setColour(timeline.resolveColour(Timeline::rulerBackgroundColourId).darker(0.15f));
+    g.fillRect(area);
+    g.setColour(timeline.resolveColour(Timeline::separatorColourId));
+    g.fillRect(area.withTop(area.getBottom() - 1.0f));
+
+    g.setFont(smallFont(11.0f));
+    for (std::size_t index = 0; index < markers.size(); ++index)
+    {
+        const auto& marker = markers[index];
+        const auto nextX = index + 1 < markers.size() ? markers[index + 1].x : area.getRight() + 150.0f;
+        g.setColour(marker.colour);
+        g.fillRect(marker.x, area.getY() + 2.0f, 1.0f, area.getHeight() - 3.0f);
+        if (nextX - marker.x < 9.0f)
+            continue;
+        juce::Path flag;
+        flag.addTriangle(marker.x, area.getY() + 2.0f, marker.x + 7.0f, area.getY() + 6.0f, marker.x, area.getY() + 10.0f);
+        g.fillPath(flag);
+        if (marker.marker->name.isEmpty())
+            continue;
+        const auto width = std::min(nextX - marker.x - 10.0f, 150.0f);
+        if (width < 12.0f)
+            continue;
+        g.setColour(timeline.resolveColour(Timeline::rulerTextColourId));
+        g.drawText(marker.marker->name, juce::Rectangle<float>{ marker.x + 9.0f, area.getY(), width, area.getHeight() - 1.0f }, juce::Justification::centredLeft, true);
+    }
+
+    if (timelineSelection)
+    {
+        const auto colour = timeline.resolveColour(Timeline::timelineSelectionColourId);
+        const auto bar = timelineSelection->withTrimmedTop(area.getHeight() * 0.55f).withTrimmedBottom(2.0f);
+        g.setColour(colour.withMultipliedAlpha(0.75f));
+        g.fillRect(bar);
+        g.setColour(colour);
+        g.fillRect(bar.withWidth(2.0f));
+        g.fillRect(bar.withLeft(bar.getRight() - 2.0f));
+    }
+}
+
+void TimelineLookAndFeelMethods::drawTimelineTimeSelection(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, bool inRuler)
+{
+    const auto colour = timeline.resolveColour(Timeline::timeSelectionColourId);
+    g.setColour(colour.withMultipliedAlpha(inRuler ? 0.45f : 0.18f));
+    g.fillRect(area);
+    g.setColour(colour.withMultipliedAlpha(0.8f));
+    g.fillRect(area.withWidth(1.0f));
+    g.fillRect(area.withLeft(area.getRight() - 1.0f));
+}
+
+void TimelineLookAndFeelMethods::drawTimelineRubberBand(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area)
+{
+    const auto colour = timeline.resolveColour(Timeline::selectionColourId);
+    g.setColour(colour.withMultipliedAlpha(0.12f));
+    g.fillRect(area);
+    g.setColour(colour.withMultipliedAlpha(0.7f));
+    g.drawRect(area, 1.0f);
+}
+
 void TimelineLookAndFeelMethods::drawTimelineHighlight(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> range)
 {
     const auto colour = timeline.resolveColour(Timeline::highlightColourId);
@@ -234,8 +285,16 @@ void TimelineLookAndFeelMethods::drawTimelineTrackHeader(juce::Graphics& g, cons
         return found.isTransparent() ? fallback : found;
     };
     auto area = header.getLocalBounds().toFloat();
-    g.setColour(colour(Timeline::headerBackgroundColourId, juce::Colours::darkgrey));
+    const auto selected = timeline != nullptr && timeline->isTrackSelected(header.getTrackId());
+    const auto background = colour(Timeline::headerBackgroundColourId, juce::Colours::darkgrey);
+    g.setColour(selected ? background.interpolatedWith(colour(Timeline::selectionColourId, juce::Colours::white), 0.2f) : background);
     g.fillRect(area);
+    const auto cursor = timeline != nullptr && timeline->hasKeyboardFocus(true) && timeline->getKeyboardCursor() == KeyboardCursor{ .track = header.getTrackId(), .clip = std::nullopt };
+    if (cursor)
+    {
+        g.setColour(colour(Timeline::keyboardCursorColourId, juce::Colours::white));
+        g.drawRect(area.reduced(2.0f).withTrimmedLeft(4.0f), 1.5f);
+    }
     g.setColour(colour(Timeline::separatorColourId, juce::Colours::black));
     g.fillRect(area.withTop(area.getBottom() - 1.0f));
     g.fillRect(area.withLeft(area.getRight() - 1.0f));

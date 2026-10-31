@@ -229,8 +229,8 @@ void WaveformDemo::mouseWheelMove(const juce::MouseEvent& event, const juce::Mou
     auto next = mapping.scrolledBy(action.scrollTimePixels - action.scrollTracksPixels);
     if (action.zoomAtPointerSteps != 0.0)
         next = next.zoomedAround(limits.clamp(jtimeline::wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtPointerSteps, jtimeline::wheel::zoomFactorPerNotch)), static_cast<double>(local.position.x));
-    if (action.zoomAtEditCursorSteps != 0.0)
-        next = next.zoomedAround(limits.clamp(jtimeline::wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtEditCursorSteps, jtimeline::wheel::zoomFactorPerNotch)), mainView.getWidth() / 2.0);
+    if (action.zoomAtAnchorSteps != 0.0)
+        next = next.zoomedAround(limits.clamp(jtimeline::wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtAnchorSteps, jtimeline::wheel::zoomFactorPerNotch)), mainView.getWidth() / 2.0);
     if (action.waveformZoomSteps != 0.0)
         displayScale.setValue(displayScale.getValue() * std::pow(jtimeline::wheel::waveformFactorPerStep, action.waveformZoomSteps));
     setMapping(next);
@@ -266,6 +266,18 @@ bool WaveformDemo::keyPressed(const juce::KeyPress& key)
         case jtimeline::KeyAction::selectAll:
         case jtimeline::KeyAction::scrollToStart:
         case jtimeline::KeyAction::scrollToEnd:
+        case jtimeline::KeyAction::cursorLeft:
+        case jtimeline::KeyAction::cursorRight:
+        case jtimeline::KeyAction::cursorUp:
+        case jtimeline::KeyAction::cursorDown:
+        case jtimeline::KeyAction::extendLeft:
+        case jtimeline::KeyAction::extendRight:
+        case jtimeline::KeyAction::extendUp:
+        case jtimeline::KeyAction::extendDown:
+        case jtimeline::KeyAction::cursorEnter:
+        case jtimeline::KeyAction::cursorEscape:
+        case jtimeline::KeyAction::zoomToSelection:
+        case jtimeline::KeyAction::playStop:
             break;
     }
     return false;

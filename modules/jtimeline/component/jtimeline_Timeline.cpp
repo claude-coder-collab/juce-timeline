@@ -22,6 +22,7 @@ constexpr double clipMargin = 8.0;
 constexpr int playheadRepaintHalfWidth = 6;
 constexpr double densePixelsPerClip = 2.0;
 constexpr int waveformRepaintIntervalMs = 30;
+constexpr double revealMarginFraction = 0.05;
 
 double sanitisedRate(double rate)
 {
@@ -42,6 +43,8 @@ Timeline::Timeline() :
     clipArea(std::make_unique<detail::ClipArea>(*this))
 {
     setWantsKeyboardFocus(true);
+    setFocusContainerType(FocusContainerType::focusContainer);
+    setTitle("Timeline");
     for (auto* child : std::initializer_list<juce::Component*>{ ruler.get(), headers.get(), clipArea.get(), &horizontalBar, &verticalBar })
         addAndMakeVisible(child);
     horizontalBar.setAutoHide(false);
@@ -79,11 +82,17 @@ void Timeline::refresh()
 {
     readTimeline();
     readTracks();
+    readMarkers();
+    selectedClipSpan.reset();
     trackClips.clear();
     clipInfos.clear();
     overviewSpans.clear();
+    if (!overview && ruler->getHeight() != rulerTotalHeight() && !getLocalBounds().isEmpty())
+        resized();
     layoutChanged();
     setMapping(mapping);
+    validateSelection(std::nullopt);
+    clipArea->proxiesNeedUpdate();
     repaint();
 }
 
@@ -132,6 +141,7 @@ void Timeline::modelChanged(const Change& change)
                 trackClips.clear();
                 overviewSpans.clear();
                 layoutChanged();
+                validateSelection(std::span<const ClipId>{});
                 repaint();
             }
             else if constexpr (std::is_same_v<Kind, ClipsChanged>)
@@ -140,6 +150,7 @@ void Timeline::modelChanged(const Change& change)
             }
             else if constexpr (std::is_same_v<Kind, MarkersChanged>)
             {
+                readMarkers();
                 ruler->repaint();
             }
             else
@@ -162,6 +173,9 @@ void Timeline::notifierDestroyed(TimelineNotifier& destroyedNotifier)
 
 void Timeline::clipsChanged(std::span<const ClipId> ids)
 {
+    selectedClipSpan.reset();
+    validateSelection(ids);
+    clipArea->proxiesNeedUpdate();
     if (overview)
     {
         overviewSpans.clear();
@@ -244,8 +258,9 @@ void Timeline::resized()
         auto area = getLocalBounds();
         const auto bottom = area.removeFromBottom(m.scrollBarThickness);
         horizontalBar.setBounds(bottom.withTrimmedLeft(m.headerWidth).withTrimmedRight(m.scrollBarThickness));
-        verticalBar.setBounds(area.removeFromRight(m.scrollBarThickness).withTrimmedTop(m.rulerHeight));
-        ruler->setBounds(area.removeFromTop(m.rulerHeight).withTrimmedLeft(m.headerWidth));
+        const auto rulerHeight = rulerTotalHeight();
+        verticalBar.setBounds(area.removeFromRight(m.scrollBarThickness).withTrimmedTop(rulerHeight));
+        ruler->setBounds(area.removeFromTop(rulerHeight).withTrimmedLeft(m.headerWidth));
         headers->setBounds(area.removeFromLeft(m.headerWidth));
         clipArea->setBounds(area);
     }
@@ -266,12 +281,13 @@ void Timeline::paint(juce::Graphics& g)
     if (overview)
         return;
     const auto m = metrics();
+    const auto rulerHeight = rulerTotalHeight();
     g.setColour(resolveColour(rulerBackgroundColourId));
-    g.fillRect(0, 0, m.headerWidth, m.rulerHeight);
+    g.fillRect(0, 0, m.headerWidth, rulerHeight);
     g.setColour(resolveColour(headerBackgroundColourId));
     g.fillRect(0, getHeight() - m.scrollBarThickness, m.headerWidth, m.scrollBarThickness);
     g.setColour(resolveColour(separatorColourId));
-    g.fillRect(0, m.rulerHeight - 1, m.headerWidth, 1);
+    g.fillRect(0, rulerHeight - 1, m.headerWidth, 1);
 }
 
 void Timeline::lookAndFeelChanged()
@@ -324,10 +340,18 @@ juce::Colour Timeline::resolveColour(int colourId) const
             return specifiedColour(clipTextColourId).value_or(text).withMultipliedAlpha(0.85f);
         case fadeColourId:
             return juce::Colours::black.withAlpha(0.3f);
+        case timeSelectionColourId:
+            return getLookAndFeel().findColour(juce::Slider::thumbColourId);
+        case markerColourId:
+            return juce::Colour{ 0xffe8a33d };
+        case timelineSelectionColourId:
+            return juce::Colour{ 0xff5cb85c };
+        case keyboardCursorColourId:
         case playheadColourId:
             return getLookAndFeel().findColour(juce::TextEditor::focusedOutlineColourId).withAlpha(1.0f);
         case clipTextColourId:
         case headerTextColourId:
+        case selectionColourId:
         default:
             return text;
     }
@@ -400,6 +424,7 @@ void Timeline::viewChanged()
 {
     updateScrollBars();
     clipArea->repaint();
+    clipArea->proxiesNeedUpdate();
     ruler->repaint();
     if (onViewChanged)
         onViewChanged();
@@ -422,10 +447,10 @@ void Timeline::zoomToFit()
     setMapping(TimeMapping{ getZoomLimits().maxSamplesPerPixel, 0 });
 }
 
-void Timeline::zoomAtEditCursor(double steps, double factorPerStep)
+void Timeline::zoomAtAnchor(double steps, double factorPerStep)
 {
     const auto target = getZoomLimits().clamp(wheel::zoomedSamplesPerPixel(mapping.getSamplesPerPixel(), steps, factorPerStep));
-    setMapping(mapping.zoomedAroundSample(target, getEditCursor(), clipAreaWidth()));
+    setMapping(mapping.zoomedAroundSample(target, getZoomAnchor(), clipAreaWidth()));
 }
 
 void Timeline::scrollTo(SamplePosition position)
@@ -441,6 +466,7 @@ void Timeline::setTrackScroll(int pixels)
     trackScroll = next;
     headers->update();
     clipArea->repaint();
+    clipArea->proxiesNeedUpdate();
     updateScrollBars();
     if (onViewChanged)
         onViewChanged();
@@ -526,6 +552,7 @@ void Timeline::layoutChanged()
     trackScroll = std::clamp(trackScroll, 0, std::max(0, layout.getTotalHeight() - clipAreaHeight()));
     headers->update();
     clipArea->repaint();
+    clipArea->proxiesNeedUpdate();
     updateScrollBars();
     if (previous != trackScroll && onViewChanged)
         onViewChanged();
@@ -820,8 +847,8 @@ void Timeline::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWh
         next = next.scrolledBy(action.scrollTimePixels);
     if (action.zoomAtPointerSteps != 0.0)
         next = next.zoomedAround(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtPointerSteps, wheel::zoomFactorPerNotch)), pointerX);
-    if (action.zoomAtEditCursorSteps != 0.0)
-        next = next.zoomedAroundSample(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtEditCursorSteps, wheel::zoomFactorPerNotch)), getEditCursor(), clipAreaWidth());
+    if (action.zoomAtAnchorSteps != 0.0)
+        next = next.zoomedAroundSample(limits.clamp(wheel::zoomedSamplesPerPixel(next.getSamplesPerPixel(), action.zoomAtAnchorSteps, wheel::zoomFactorPerNotch)), getZoomAnchor(), clipAreaWidth());
     setMapping(next);
     if (action.waveformZoomSteps != 0.0)
         setWaveformScale(waveformScale * std::pow(wheel::waveformFactorPerStep, action.waveformZoomSteps));
@@ -841,16 +868,25 @@ bool Timeline::keyPressed(const juce::KeyPress& key)
 {
     if (overview)
         return false;
-    switch (keyActionFor(key))
+    const auto action = keyActionFor(key);
+    switch (action)
     {
         case KeyAction::zoomIn:
-            zoomAtEditCursor(1.0, wheel::zoomFactorPerKey);
+            zoomAtAnchor(1.0, wheel::zoomFactorPerKey);
             return true;
         case KeyAction::zoomOut:
-            zoomAtEditCursor(-1.0, wheel::zoomFactorPerKey);
+            zoomAtAnchor(-1.0, wheel::zoomFactorPerKey);
             return true;
         case KeyAction::zoomToFit:
             zoomToFit();
+            return true;
+        case KeyAction::zoomToSelection:
+            zoomToSelection();
+            return true;
+        case KeyAction::playStop:
+            if (!onPlayStop)
+                return false;
+            onPlayStop();
             return true;
         case KeyAction::waveformTaller:
             setWaveformScale(waveformScale * wheel::waveformFactorPerStep);
@@ -864,13 +900,550 @@ bool Timeline::keyPressed(const juce::KeyPress& key)
         case KeyAction::scrollToEnd:
             setMapping(mapping.withSampleAt(length, clipAreaWidth()));
             return true;
-        case KeyAction::none:
         case KeyAction::trackTaller:
         case KeyAction::trackShorter:
+        {
+            auto targets = getSelectedTracks();
+            if (targets.empty() && keyboardCursor.track)
+                targets.push_back(*keyboardCursor.track);
+            if (targets.empty())
+                return false;
+            stepTrackHeights(targets, action == KeyAction::trackTaller ? 1 : -1);
+            if (keyboardCursor.track)
+                if (const auto index = trackIndex(*keyboardCursor.track); index >= 0)
+                    revealTrack(index);
+            return true;
+        }
         case KeyAction::selectAll:
+            selectAllClips();
+            announce(juce::String{ static_cast<juce::int64>(selection.getClips().size()) } + " clips selected");
+            return true;
+        case KeyAction::cursorLeft:
+            moveKeyboardCursor(CursorMove::left, SelectMode::replace);
+            return true;
+        case KeyAction::cursorRight:
+            moveKeyboardCursor(CursorMove::right, SelectMode::replace);
+            return true;
+        case KeyAction::cursorUp:
+            moveKeyboardCursor(CursorMove::up, SelectMode::replace);
+            return true;
+        case KeyAction::cursorDown:
+            moveKeyboardCursor(CursorMove::down, SelectMode::replace);
+            return true;
+        case KeyAction::extendLeft:
+            moveKeyboardCursor(CursorMove::left, SelectMode::add);
+            return true;
+        case KeyAction::extendRight:
+            moveKeyboardCursor(CursorMove::right, SelectMode::add);
+            return true;
+        case KeyAction::extendUp:
+            moveKeyboardCursor(CursorMove::up, SelectMode::add);
+            return true;
+        case KeyAction::extendDown:
+            moveKeyboardCursor(CursorMove::down, SelectMode::add);
+            return true;
+        case KeyAction::cursorEnter:
+            return moveKeyboardCursor(CursorMove::enter, SelectMode::replace);
+        case KeyAction::cursorEscape:
+            return moveKeyboardCursor(CursorMove::escape, SelectMode::replace);
+        case KeyAction::none:
             break;
     }
     return false;
+}
+
+//==============================================================================
+SamplePosition Timeline::getEditCursor() const
+{
+    if (const auto& range = selection.getTimeRange())
+        return range->start;
+    return playhead;
+}
+
+std::vector<ClipId> Timeline::getSelectedClips() const
+{
+    std::vector<ClipId> ids{ selection.getClips().begin(), selection.getClips().end() };
+    std::ranges::sort(ids);
+    return ids;
+}
+
+std::vector<TrackId> Timeline::getSelectedTracks() const
+{
+    std::vector<TrackId> ids;
+    for (const auto& track : tracks)
+        if (selection.contains(track.id))
+            ids.push_back(track.id);
+    return ids;
+}
+
+void Timeline::setSelectedClips(std::span<const ClipId> clips)
+{
+    if (selection.setClips(clips))
+        selectionChanged();
+}
+
+void Timeline::setSelectedTracks(std::span<const TrackId> selectedTracks)
+{
+    if (selection.setTracks(selectedTracks))
+        selectionChanged();
+}
+
+void Timeline::setTimeSelection(std::optional<SampleRange> range)
+{
+    if (range)
+        range = range->intersection({ .start = 0, .end = length });
+    if (selection.setTimeRange(range))
+        selectionChanged();
+}
+
+void Timeline::selectClip(ClipId clip, SelectMode mode)
+{
+    const auto info = model.isComplete() ? model.clipInfo(clip) : std::nullopt;
+    if (!info)
+        return;
+    auto changed = selection.select(clip, mode);
+    changed = tracksFollowClips() || changed;
+    keyboardCursor = { .track = info->track, .clip = clip };
+    cursorChanged();
+    if (changed)
+        selectionChanged();
+}
+
+void Timeline::extendClipSelection(ClipId clip)
+{
+    const auto anchor = keyboardCursor.clip && model.isComplete() ? model.clipInfo(*keyboardCursor.clip) : std::nullopt;
+    const auto target = model.isComplete() ? model.clipInfo(clip) : std::nullopt;
+    if (!target)
+        return;
+    const auto anchorIndex = anchor ? trackIndex(anchor->track) : -1;
+    const auto targetIndex = trackIndex(target->track);
+    if (!anchor || anchorIndex < 0 || targetIndex < 0)
+    {
+        selectClip(clip, SelectMode::replace);
+        return;
+    }
+    const auto first = normalised(*anchor).range();
+    const auto second = normalised(*target).range();
+    const SampleRange span{ .start = std::min(first.start, second.start), .end = std::max(first.end, second.end) };
+    std::vector<ClipId> ids;
+    for (auto index = std::min(anchorIndex, targetIndex); index <= std::max(anchorIndex, targetIndex); ++index)
+    {
+        const auto found = model.clipsInRange(tracks[static_cast<std::size_t>(index)].id, span.start, span.end);
+        ids.insert(ids.end(), found.begin(), found.end());
+    }
+    selectClipsByGesture(ids);
+}
+
+void Timeline::selectClipsByGesture(std::span<const ClipId> clips)
+{
+    auto changed = selection.setClips(clips);
+    changed = tracksFollowClips() || changed;
+    if (changed)
+        selectionChanged();
+}
+
+bool Timeline::tracksFollowClips()
+{
+    std::unordered_set<TrackId> holding;
+    for (const auto clip : selection.getClips())
+    {
+        if (const auto* cached = cachedClip(clip))
+            holding.insert(cached->track);
+        else if (const auto info = model.isComplete() ? model.clipInfo(clip) : std::nullopt)
+            holding.insert(info->track);
+    }
+    const std::vector<TrackId> ids{ holding.begin(), holding.end() };
+    return selection.setTracks(ids);
+}
+
+void Timeline::selectTrack(TrackId track, SelectMode mode)
+{
+    if (trackIndex(track) < 0)
+        return;
+    const auto changed = selection.select(track, mode);
+    keyboardCursor = { .track = track, .clip = std::nullopt };
+    cursorChanged();
+    if (changed)
+        selectionChanged();
+}
+
+void Timeline::extendTrackSelection(TrackId track)
+{
+    const auto anchorIndex = keyboardCursor.track ? trackIndex(*keyboardCursor.track) : -1;
+    const auto targetIndex = trackIndex(track);
+    if (targetIndex < 0)
+        return;
+    if (anchorIndex < 0)
+    {
+        selectTrack(track, SelectMode::replace);
+        return;
+    }
+    std::vector<TrackId> ids;
+    for (auto index = std::min(anchorIndex, targetIndex); index <= std::max(anchorIndex, targetIndex); ++index)
+        ids.push_back(tracks[static_cast<std::size_t>(index)].id);
+    auto changed = selection.setTracks(ids);
+    changed = selection.setClips({}) || changed;
+    if (changed)
+        selectionChanged();
+}
+
+void Timeline::selectAllClips()
+{
+    if (!model.isComplete() || length <= 0)
+        return;
+    const auto onSelectedTracks = !selection.getTracks().empty();
+    std::vector<ClipId> all;
+    std::vector<TrackId> holding;
+    for (const auto& track : tracks)
+    {
+        if (onSelectedTracks && !selection.contains(track.id))
+            continue;
+        const auto ids = model.clipsInRange(track.id, 0, length);
+        all.insert(all.end(), ids.begin(), ids.end());
+        if (!ids.empty())
+            holding.push_back(track.id);
+    }
+    auto changed = selection.setClips(all);
+    changed = selection.setTracks(holding) || changed;
+    if (changed)
+        selectionChanged();
+}
+
+void Timeline::clearSelection()
+{
+    const auto objects = selection.clearObjects();
+    const auto time = selection.setTimeRange(std::nullopt);
+    if (objects || time)
+        selectionChanged();
+}
+
+void Timeline::zoomToSelection()
+{
+    if (const auto& range = selection.getTimeRange())
+    {
+        setVisibleRange(*range);
+        return;
+    }
+    if (const auto span = getSelectedClipSpan())
+        setVisibleRange(*span);
+}
+
+std::optional<SampleRange> Timeline::getSelectedClipSpan()
+{
+    if (selectedClipSpan)
+        return *selectedClipSpan;
+    std::optional<SampleRange> span;
+    if (model.isComplete())
+    {
+        for (const auto clip : selection.getClips())
+        {
+            const auto* cached = cachedClip(clip);
+            const auto info = cached != nullptr ? std::optional{ *cached } : model.clipInfo(clip);
+            if (!info)
+                continue;
+            const auto range = normalised(*info).range();
+            span = span ? SampleRange{ .start = std::min(span->start, range.start), .end = std::max(span->end, range.end) } : range;
+        }
+    }
+    selectedClipSpan = span;
+    return span;
+}
+
+SamplePosition Timeline::getZoomAnchor()
+{
+    if (const auto span = getSelectedClipSpan())
+        return span->start + (span->length() / 2);
+    return getEditCursor();
+}
+
+void Timeline::selectionChanged()
+{
+    selectedClipSpan.reset();
+    clipArea->repaint();
+    ruler->repaint();
+    headers->repaintHeaders();
+    if (onSelectionChanged)
+        onSelectionChanged();
+}
+
+void Timeline::validateSelection(std::optional<std::span<const ClipId>> changedClips)
+{
+    auto changed = selection.retainTracks([this](TrackId track) { return trackIndex(track) >= 0; });
+    const auto exists = [this](ClipId clip) { return model.isComplete() && model.clipInfo(clip).has_value(); };
+    if (changedClips)
+    {
+        for (const auto clip : *changedClips)
+            if (selection.contains(clip) && !exists(clip))
+                changed = selection.retainClips([clip](ClipId id) { return id != clip; }) || changed;
+    }
+    else
+    {
+        changed = selection.retainClips(exists) || changed;
+        if (const auto& range = selection.getTimeRange())
+            changed = selection.setTimeRange(range->intersection({ .start = 0, .end = length })) || changed;
+    }
+
+    const auto cursorAffected = !changedClips || changedClips->empty() || std::ranges::any_of(*changedClips, [this](ClipId clip) { return keyboardCursor.clip == clip; });
+    if (cursorAffected)
+        validateCursor();
+    if (changed)
+        selectionChanged();
+}
+
+void Timeline::validateCursor()
+{
+    auto next = keyboardCursor;
+    if (next.clip)
+    {
+        const auto info = model.isComplete() ? model.clipInfo(*next.clip) : std::nullopt;
+        if (info)
+            next.track = info->track;
+        else
+            next.clip.reset();
+    }
+    if (next.track && trackIndex(*next.track) < 0)
+        next = {};
+    if (next == keyboardCursor)
+        return;
+    keyboardCursor = next;
+    cursorChanged();
+}
+
+void Timeline::cursorChanged()
+{
+    clipArea->repaint();
+    headers->repaintHeaders();
+}
+
+void Timeline::setKeyboardCursor(KeyboardCursor cursor)
+{
+    if (cursor.clip)
+    {
+        const auto info = model.isComplete() ? model.clipInfo(*cursor.clip) : std::nullopt;
+        if (!info)
+            return;
+        cursor.track = info->track;
+    }
+    if (cursor.track && trackIndex(*cursor.track) < 0)
+        return;
+    if (cursor == keyboardCursor)
+        return;
+    keyboardCursor = cursor;
+    cursorChanged();
+}
+
+NavigationContext Timeline::navigationContext() const
+{
+    if (!model.isComplete())
+        return {};
+    return { .tracks = getTrackIds(),
+        .firstVisibleTrack = layout.visibleTracks(trackScroll, clipAreaHeight()).begin,
+        .visible = getVisibleRange(),
+        .length = length,
+        .clipsInRange = model.clipsInRange,
+        .clipInfo = model.clipInfo,
+        .adjacentClip = model.adjacentClip };
+}
+
+bool Timeline::moveKeyboardCursor(CursorMove move, SelectMode mode)
+{
+    if (overview)
+        return false;
+    const auto next = navigation::move(keyboardCursor, move, navigationContext());
+    if (next == keyboardCursor || next.isEmpty())
+        return false;
+    keyboardCursor = next;
+    auto changed = false;
+    if (next.clip)
+    {
+        changed = selection.select(*next.clip, mode);
+        changed = tracksFollowClips() || changed;
+    }
+    else if (next.track)
+    {
+        changed = selection.select(*next.track, mode);
+    }
+    cursorChanged();
+    reveal(next);
+    if (changed)
+        selectionChanged();
+    announce(describe(next));
+    focusAccessibilityOn(next);
+    return true;
+}
+
+void Timeline::reveal(const KeyboardCursor& cursor)
+{
+    if (cursor.clip)
+    {
+        if (const auto info = model.clipInfo(*cursor.clip))
+        {
+            const auto range = normalised(*info).range();
+            const auto visible = getVisibleRange();
+            const auto span = visible.length();
+            const auto margin = std::min(static_cast<SamplePosition>(static_cast<double>(span) * revealMarginFraction), std::max<SamplePosition>(0, (span - range.length()) / 2));
+            if (range.length() <= span)
+            {
+                if (range.start < visible.start + margin)
+                    setMapping(mapping.withSampleAt(range.start - margin, 0.0));
+                else if (range.end > visible.end - margin)
+                    setMapping(mapping.withSampleAt(range.end + margin, clipAreaWidth()));
+            }
+            else if (!range.intersects(visible))
+            {
+                setMapping(mapping.withSampleAt(range.start - margin, 0.0));
+            }
+        }
+    }
+    if (cursor.track)
+        if (const auto index = trackIndex(*cursor.track); index >= 0)
+            revealTrack(index);
+}
+
+void Timeline::focusAccessibilityOn(const KeyboardCursor& cursor)
+{
+    clipArea->updateProxies();
+    juce::Component* target = nullptr;
+    if (cursor.clip)
+        target = clipArea->proxyFor(*cursor.clip);
+    else if (cursor.track)
+        target = headers->headerFor(*cursor.track);
+    if (target != nullptr)
+        if (auto* handler = target->getAccessibilityHandler())
+            handler->grabFocus();
+}
+
+void Timeline::revealTrack(int index)
+{
+    const auto top = layout.getTop(index);
+    const auto bottom = top + layout.getHeight(index);
+    const auto height = clipAreaHeight();
+    if (top < trackScroll || bottom - top > height)
+        setTrackScroll(top);
+    else if (bottom > trackScroll + height)
+        setTrackScroll(bottom - height);
+}
+
+std::vector<ClipId> Timeline::clipsInArea(juce::Rectangle<float> area) const
+{
+    std::vector<ClipId> ids;
+    const auto local = clipArea->getLocalBounds().toFloat();
+    const auto bounds = juce::Rectangle<float>::leftTopRightBottom(std::max(area.getX(), local.getX()), std::max(area.getY(), local.getY()), std::min(area.getRight(), local.getRight()), std::min(area.getBottom(), local.getBottom()));
+    if (overview || !model.isComplete() || bounds.getWidth() < 0.0f || bounds.getHeight() < 0.0f || length <= 0)
+        return ids;
+    const auto from = std::max<SamplePosition>(mapping.sampleAt(static_cast<double>(bounds.getX())), 0);
+    const auto to = std::min(std::max(mapping.sampleAt(static_cast<double>(bounds.getRight())) + 1, from + 1), length);
+    if (from >= to)
+        return ids;
+    const auto top = static_cast<int>(std::floor(bounds.getY()));
+    const auto span = layout.visibleTracks(trackScroll + top, std::max(1, static_cast<int>(std::ceil(bounds.getBottom())) - top));
+    for (auto index = span.begin; index < span.end; ++index)
+    {
+        const auto found = model.clipsInRange(tracks[static_cast<std::size_t>(index)].id, from, to);
+        ids.insert(ids.end(), found.begin(), found.end());
+    }
+    return ids;
+}
+
+juce::String Timeline::trackName(TrackId track) const
+{
+    const auto index = trackIndex(track);
+    if (index < 0)
+        return {};
+    const auto& name = tracks[static_cast<std::size_t>(index)].info.name;
+    return name.isNotEmpty() ? name : juce::String{ "Track " } + juce::String{ index + 1 };
+}
+
+juce::String Timeline::describeClip(const ClipInfo& info) const
+{
+    const auto range = normalised(info).range();
+    auto text = trackName(info.track) + ", " + ruler::formatTime(static_cast<double>(range.start) / sampleRate, 0.001) + " to " + ruler::formatTime(static_cast<double>(range.end) / sampleRate, 0.001);
+    if (info.kind == ClipKind::group)
+        text << ", group";
+    if (info.muted)
+        text << ", muted";
+    return text;
+}
+
+juce::String Timeline::describe(const KeyboardCursor& cursor) const
+{
+    if (cursor.clip)
+        if (const auto info = model.clipInfo(*cursor.clip))
+            return (info->name.isNotEmpty() ? info->name : juce::String{ "Untitled clip" }) + ", " + describeClip(*info) + (selection.contains(*cursor.clip) ? ", selected" : "");
+    if (cursor.track)
+        return trackName(*cursor.track) + ", track" + (selection.contains(*cursor.track) ? ", selected" : "");
+    return {};
+}
+
+void Timeline::announce(const juce::String& text)
+{
+    if (text.isNotEmpty())
+        juce::AccessibilityHandler::postAnnouncement(text, juce::AccessibilityHandler::AnnouncementPriority::medium);
+}
+
+void Timeline::focusFromClick()
+{
+    if (isShowing() || isOnDesktop())
+        grabKeyboardFocus();
+}
+
+void Timeline::focusGained(FocusChangeType /*cause*/)
+{
+    if (!keyboardCursor.isEmpty())
+        cursorChanged();
+}
+
+void Timeline::focusLost(FocusChangeType /*cause*/)
+{
+    if (!keyboardCursor.isEmpty())
+        cursorChanged();
+}
+
+std::unique_ptr<juce::AccessibilityHandler> Timeline::createAccessibilityHandler()
+{
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::group);
+}
+
+std::unique_ptr<juce::ComponentTraverser> Timeline::createFocusTraverser()
+{
+    return std::make_unique<detail::TimelineTraverser>(*this);
+}
+
+//==============================================================================
+bool Timeline::hasMarkerStrip() const
+{
+    return !overview && model.isComplete() && (model.markersInRange || model.timelineSelection);
+}
+
+int Timeline::rulerTotalHeight() const
+{
+    const auto m = metrics();
+    return m.rulerHeight + (hasMarkerStrip() ? m.markerStripHeight : 0);
+}
+
+void Timeline::readMarkers()
+{
+    timelineSelection = model.isComplete() && model.timelineSelection ? model.timelineSelection() : std::nullopt;
+    if (timelineSelection && timelineSelection->isEmpty())
+        timelineSelection.reset();
+    markerCache = {};
+}
+
+const std::vector<Marker>& Timeline::markersFor(SampleRange range)
+{
+    if (!model.isComplete() || !model.markersInRange)
+    {
+        markerCache = {};
+        return markerCache.markers;
+    }
+    if (markerCache.valid && markerCache.queried.start <= range.start && markerCache.queried.end >= range.end)
+        return markerCache.markers;
+    const auto margin = range.length() / 2;
+    markerCache.queried = { .start = range.start - margin, .end = range.end + margin };
+    markerCache.markers = model.markersInRange(markerCache.queried.start, markerCache.queried.end);
+    std::ranges::stable_sort(markerCache.markers, {}, &Marker::position);
+    markerCache.valid = true;
+    return markerCache.markers;
 }
 
 }

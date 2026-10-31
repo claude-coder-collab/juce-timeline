@@ -8,6 +8,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <memory>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -28,6 +29,7 @@ struct TimelineMetrics
     DetailThresholds detail; /**< Clip widths for each level of detail. */
     float clipInset = 1.0f; /**< Space between a clip and its lane's top and bottom edges. */
     float minWaveformHeight = 12.0f; /**< Clips shorter than this draw no waveform, and stacked channels shorter than this are combined. */
+    int markerStripHeight = 18; /**< The strip above the ruler's time scale for markers and the timeline selection, shown when the model has either. */
 };
 
 /** A clip's waveform as the Timeline asks the look and feel to draw it. */
@@ -54,6 +56,16 @@ struct ClipPaint
     double startX = 0.0; /**< The clip's uncut left edge, which may lie far outside bounds. */
     double endX = 0.0; /**< The clip's uncut right edge, which may lie far outside bounds. */
     ClipWaveform waveform; /**< The waveform; its status is none when the clip draws without one. */
+    bool selected = false; /**< The clip is selected. */
+    bool cursor = false; /**< The keyboard cursor is on the clip and the timeline has keyboard focus. */
+};
+
+/** A marker as the Timeline asks the look and feel to draw it. */
+struct MarkerPaint
+{
+    float x = 0.0f; /**< The marker position. */
+    const Marker* marker = nullptr; /**< The marker; never null. */
+    juce::Colour colour; /**< The marker's colour, or the default marker colour. */
 };
 
 /** A ruler tick as the Timeline asks the look and feel to draw it. */
@@ -101,9 +113,15 @@ public:
     virtual void drawTimelineRuler(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const RulerMark> marks);
     /** Draws the playhead in the clip area (inRuler false) or the ruler (inRuler true). */
     virtual void drawTimelinePlayhead(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, float x, bool inRuler);
+    /** Draws the strip above the time scale: its background, the timeline selection (if any) and the markers, with names to their right. */
+    virtual void drawTimelineMarkerStrip(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, std::span<const MarkerPaint> markers, std::optional<juce::Rectangle<float>> timelineSelection);
+    /** Draws the time selection over the clip area (inRuler false) or the ruler's time scale (inRuler true). */
+    virtual void drawTimelineTimeSelection(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area, bool inRuler);
+    /** Draws the rubber band while dragging a selection rectangle in the clip area. */
+    virtual void drawTimelineRubberBand(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> area);
     /** Draws an overview's highlighted range. */
     virtual void drawTimelineHighlight(juce::Graphics& g, const Timeline& timeline, juce::Rectangle<float> range);
-    /** Draws a default track header. */
+    /** Draws a default track header, showing whether the track is selected or has the keyboard cursor. */
     virtual void drawTimelineTrackHeader(juce::Graphics& g, const TrackHeader& header);
 
     /** Returns the methods of a component's look and feel, or the defaults. */

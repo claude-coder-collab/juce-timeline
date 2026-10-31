@@ -28,11 +28,39 @@ KeyAction actionFor(const KeyInput& key, bool isMac)
             return KeyAction::none;
         return key.named == KeyInput::Named::home ? KeyAction::scrollToStart : KeyAction::scrollToEnd;
     }
-    if (key.named != KeyInput::Named::none)
+    const auto shiftOnly = key.shift && !key.alt && !key.command && !macControl;
+    switch (key.named)
     {
-        if (!trackHeightModifiers)
+        case KeyInput::Named::up:
+        case KeyInput::Named::down:
+        {
+            const auto up = key.named == KeyInput::Named::up;
+            if (trackHeightModifiers)
+                return up ? KeyAction::trackTaller : KeyAction::trackShorter;
+            if (plain)
+                return up ? KeyAction::cursorUp : KeyAction::cursorDown;
+            if (shiftOnly)
+                return up ? KeyAction::extendUp : KeyAction::extendDown;
             return KeyAction::none;
-        return key.named == KeyInput::Named::up ? KeyAction::trackTaller : KeyAction::trackShorter;
+        }
+        case KeyInput::Named::left:
+        case KeyInput::Named::right:
+        {
+            const auto left = key.named == KeyInput::Named::left;
+            if (plain)
+                return left ? KeyAction::cursorLeft : KeyAction::cursorRight;
+            if (shiftOnly)
+                return left ? KeyAction::extendLeft : KeyAction::extendRight;
+            return KeyAction::none;
+        }
+        case KeyInput::Named::enter:
+            return plain ? KeyAction::cursorEnter : KeyAction::none;
+        case KeyInput::Named::escape:
+            return plain ? KeyAction::cursorEscape : KeyAction::none;
+        case KeyInput::Named::home:
+        case KeyInput::Named::end:
+        case KeyInput::Named::none:
+            break;
     }
 
     switch (lower(key.character))
@@ -49,6 +77,10 @@ KeyAction actionFor(const KeyInput& key, bool isMac)
             if (commandOnly)
                 return KeyAction::zoomIn;
             return commandAlt ? KeyAction::waveformTaller : KeyAction::none;
+        case U' ':
+            return plain ? KeyAction::playStop : KeyAction::none;
+        case U'f':
+            return altOnly ? KeyAction::zoomToSelection : KeyAction::none;
         case U'[':
             if (commandOnly)
                 return KeyAction::zoomOut;

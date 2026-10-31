@@ -50,6 +50,15 @@ struct ClipInfo
     [[nodiscard]] SampleRange range() const { return { .start = start, .end = start + std::max<SamplePosition>(length, 1) }; }
 };
 
+/** A named position on the timeline, drawn on the ruler. */
+struct Marker
+{
+    MarkerId id{}; /**< The marker's identity. */
+    SamplePosition position = 0; /**< The marked sample. */
+    juce::String name; /**< Shown next to the marker. */
+    std::optional<juce::Colour> colour; /**< The marker colour; unset uses Timeline::markerColourId. */
+};
+
 /** Which way adjacentClip() looks. */
 enum class Direction {
     previous, /**< Earlier in start order. */
@@ -93,6 +102,13 @@ struct TimelineModel
         coverage is computed from clipsInRange and clipInfo.
     */
     std::function<std::vector<SampleRange>(TrackId, SamplePosition rangeStart, SamplePosition rangeEnd, SamplePosition minGap)> clipSpans;
+    /**
+        Optional: returns the markers with rangeStart <= position < rangeEnd, sorted by position.
+        Views pass ranges a little wider than they show, and may pass ranges outside [0, length()].
+    */
+    std::function<std::vector<Marker>(SamplePosition rangeStart, SamplePosition rangeEnd)> markersInRange;
+    /** Optional: returns the timeline selection, or nothing if there is none. */
+    std::function<std::optional<SampleRange>()> timelineSelection;
 
     /** The notifier the model reports changes through. Without one, call Timeline::refresh(). */
     TimelineNotifier* notifier = nullptr;

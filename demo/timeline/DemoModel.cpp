@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <utility>
 
 namespace
 {
@@ -167,21 +168,25 @@ void DemoModel::generate(Scenario newScenario)
             addStatusExamples();
             for (auto index = 0; index < 16; ++index)
                 fillTrack(makeTrack("Track " + juce::String{ index + 1 }), 0.01, 20.0, 5.0);
+            makeMarkers(12, { "Intro", "Verse 1", "Chorus 1", "Verse 2", "Chorus 2", "Bridge", "Solo", "Chorus 3", "Breakdown", "Outro", "Tag", "End" }, jtimeline::SampleRange{ .start = seconds(60.0), .end = seconds(90.0) });
             break;
         case Scenario::stress:
             length = seconds(3600.0);
             for (auto index = 0; index < 100; ++index)
                 fillTrack(makeTrack("Track " + juce::String{ index + 1 }), 1.0, 25.0, 11.0);
+            makeMarkers(1000, {}, jtimeline::SampleRange{ .start = seconds(600.0), .end = seconds(1200.0) });
             break;
         case Scenario::shortTimeline:
             length = seconds(2.0);
             for (auto index = 0; index < 8; ++index)
                 fillTrack(makeTrack("Track " + juce::String{ index + 1 }), 0.00002, 0.2, 0.05);
+            makeMarkers(4, { "A", "B", "C", "D" }, jtimeline::SampleRange{ .start = seconds(0.25), .end = seconds(0.75) });
             break;
         case Scenario::empty:
             length = 0;
             for (auto index = 0; index < 4; ++index)
                 makeTrack("Track " + juce::String{ index + 1 });
+            makeMarkers(0, {}, std::nullopt);
             break;
     }
     notifier.changed(jtimeline::FullReset{});
@@ -207,12 +212,14 @@ jtimeline::TimelineModel DemoModel::bind()
         },
         .sampleRate = [] { return sampleRate; },
         .length = [this] { return length; },
-        .adjacentClip = {},
+        .adjacentClip = [this](jtimeline::TrackId id, jtimeline::ClipId clip, jtimeline::Direction direction) { return adjacentClip(id, clip, direction); },
         .clipSpans = [this](jtimeline::TrackId id, jtimeline::SamplePosition start, jtimeline::SamplePosition end, jtimeline::SamplePosition minGap) {
             std::vector<jtimeline::SampleRange> spans;
             for (const auto clip : clipsInRange(id, start, end))
                 spans.push_back(clips.at(clip).info.range().intersection({ .start = start, .end = end }));
             return jtimeline::mergeSpans(std::move(spans), minGap); },
+        .markersInRange = [this](jtimeline::SamplePosition start, jtimeline::SamplePosition end) { return markersInRange(start, end); },
+        .timelineSelection = [this] { return timelineSelection; },
         .notifier = &notifier,
     };
 }
@@ -259,6 +266,54 @@ std::vector<jtimeline::ClipId> DemoModel::clipsInRange(jtimeline::TrackId id, jt
     }
     std::ranges::reverse(result);
     return result;
+}
+
+std::optional<jtimeline::ClipId> DemoModel::adjacentClip(jtimeline::TrackId id, jtimeline::ClipId clip, jtimeline::Direction direction) const
+{
+    const auto* track = findTrack(id);
+    if (track == nullptr)
+        return std::nullopt;
+    const auto info = clips.find(clip);
+    if (info == clips.end())
+        return std::nullopt;
+    const auto key = [this](jtimeline::ClipId id) { return std::pair{ clips.at(id).info.start, id }; };
+    const auto found = std::ranges::lower_bound(track->byStart, std::pair{ info->second.info.start, clip }, {}, key);
+    if (found == track->byStart.end() || *found != clip)
+        return std::nullopt;
+    if (direction == jtimeline::Direction::previous)
+        return found == track->byStart.begin() ? std::nullopt : std::optional{ *std::prev(found) };
+    const auto next = std::next(found);
+    return next == track->byStart.end() ? std::nullopt : std::optional{ *next };
+}
+
+std::vector<jtimeline::ClipId> DemoModel::clipsOnTracks(jtimeline::SampleRange range, std::size_t firstTrack, std::size_t count) const
+{
+    std::vector<jtimeline::ClipId> ids;
+    for (auto index = firstTrack; index < std::min(tracks.size(), firstTrack + count); ++index)
+    {
+        const auto found = clipsInRange(tracks[index].id, range.start, range.end);
+        ids.insert(ids.end(), found.begin(), found.end());
+    }
+    return ids;
+}
+
+std::vector<jtimeline::Marker> DemoModel::markersInRange(jtimeline::SamplePosition start, jtimeline::SamplePosition end) const
+{
+    const auto from = std::ranges::lower_bound(markers, start, {}, &jtimeline::Marker::position);
+    const auto to = std::ranges::lower_bound(from, markers.end(), end, {}, &jtimeline::Marker::position);
+    return { from, to };
+}
+
+void DemoModel::makeMarkers(int count, const juce::StringArray& names, std::optional<jtimeline::SampleRange> selection)
+{
+    markers.clear();
+    for (auto index = 0; index < count; ++index)
+    {
+        const auto position = static_cast<jtimeline::SamplePosition>(static_cast<double>(length) * (index + 0.5) / count);
+        const auto name = index < names.size() ? names[index] : "Marker " + juce::String{ index + 1 };
+        markers.push_back({ .id = jtimeline::MarkerId{ static_cast<std::uint64_t>(index) + 1 }, .position = position, .name = name, .colour = index % 4 == 3 ? std::optional{ juce::Colour{ 0xff4fa3e0 } } : std::nullopt });
+    }
+    timelineSelection = selection;
 }
 
 jtimeline::ClipId DemoModel::addClip(jtimeline::ClipInfo info)

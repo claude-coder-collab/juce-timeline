@@ -34,7 +34,7 @@ struct WheelAction
     /** Number of pixels to move the view later in time; negative moves it earlier. */
     double scrollTimePixels = 0.0;
     /** Number of horizontal zoom-in steps anchored at the edit cursor; negative zooms out. */
-    double zoomAtEditCursorSteps = 0.0;
+    double zoomAtAnchorSteps = 0.0;
     /** Number of horizontal zoom-in steps anchored at the pointer; negative zooms out. */
     double zoomAtPointerSteps = 0.0;
     /** Number of waveform height steps up; negative goes down. Wheel up makes waveforms smaller. */

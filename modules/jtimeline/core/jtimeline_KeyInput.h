@@ -12,8 +12,12 @@ struct KeyInput
         none, /**< The key is identified by its character. */
         up, /**< Up arrow. */
         down, /**< Down arrow. */
+        left, /**< Left arrow. */
+        right, /**< Right arrow. */
         home, /**< Home. */
-        end /**< End. */
+        end, /**< End. */
+        enter, /**< Return or Enter. */
+        escape /**< Escape. */
     };
 
     /**
@@ -35,13 +39,25 @@ enum class KeyAction {
     zoomIn, /**< Horizontal zoom in, anchored at the edit cursor. */
     zoomOut, /**< Horizontal zoom out, anchored at the edit cursor. */
     zoomToFit, /**< Zoom out to show the whole timeline. */
+    zoomToSelection, /**< Zoom to the time selection, else the selected clips. */
+    playStop, /**< Start or stop playback. */
     waveformTaller, /**< Waveform height up. */
     waveformShorter, /**< Waveform height down. */
     trackTaller, /**< Track height up. */
     trackShorter, /**< Track height down. */
     selectAll, /**< Select all clips. */
     scrollToStart, /**< Move the view to the timeline start. */
-    scrollToEnd /**< Move the view to the timeline end. */
+    scrollToEnd, /**< Move the view to the timeline end. */
+    cursorLeft, /**< Move the keyboard cursor and select what it lands on. */
+    cursorRight, /**< Move the keyboard cursor and select what it lands on. */
+    cursorUp, /**< Move the keyboard cursor and select what it lands on. */
+    cursorDown, /**< Move the keyboard cursor and select what it lands on. */
+    extendLeft, /**< Move the keyboard cursor and add what it lands on to the selection. */
+    extendRight, /**< Move the keyboard cursor and add what it lands on to the selection. */
+    extendUp, /**< Move the keyboard cursor and add what it lands on to the selection. */
+    extendDown, /**< Move the keyboard cursor and add what it lands on to the selection. */
+    cursorEnter, /**< Move the keyboard cursor from a track to its first visible clip. */
+    cursorEscape /**< Move the keyboard cursor from a clip to its track. */
 };
 
 /** Keyboard bindings, following Pro Tools' defaults. */
@@ -51,9 +67,12 @@ namespace keys
 /**
     Returns the action for a key press. Bindings (macOS / Windows and Linux):
     T and R zoom in and out; Command/Ctrl + ] and [ zoom in and out; Option/Alt + A zooms to fit;
+    Option/Alt + F zooms to the selection; Space starts and stops playback;
     Command + Option / Ctrl + Alt + ] and [ change waveform height; Control + Up and Down on macOS,
-    Ctrl + Up and Down elsewhere, change track height; Command/Ctrl + A selects all clips.
-    Any other modifier combination does nothing.
+    Ctrl + Up and Down elsewhere, change track height; Command/Ctrl + A selects all clips; Home and
+    End scroll to the ends. Arrows move the keyboard cursor, Shift + arrows extend the selection,
+    and Return and Escape move the cursor into and out of a track. Any other modifier combination
+    does nothing.
 
     @param isMac  true on macOS, where Control is separate from Command
 */

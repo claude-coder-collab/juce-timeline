@@ -29,6 +29,18 @@ TEST_CASE("Option/Alt + A zooms to fit and Command/Ctrl + A selects all", "[keys
     CHECK(keys::actionFor({ .character = U'a', .alt = true, .control = true }, true) == KeyAction::none);
 }
 
+TEST_CASE("Option/Alt + F zooms to the selection and Space plays", "[keys]")
+{
+    for (const auto isMac : { true, false })
+    {
+        CHECK(keys::actionFor({ .character = U' ' }, isMac) == KeyAction::playStop);
+        CHECK(keys::actionFor({ .character = U' ', .shift = true }, isMac) == KeyAction::none);
+        CHECK(keys::actionFor({ .character = U'F', .alt = true }, isMac) == KeyAction::zoomToSelection);
+        CHECK(keys::actionFor({ .character = U'f' }, isMac) == KeyAction::none);
+        CHECK(keys::actionFor({ .character = U'f', .shift = true, .alt = true }, isMac) == KeyAction::none);
+    }
+}
+
 TEST_CASE("Brackets zoom with Command and change waveform height with Command + Option", "[keys]")
 {
     CHECK(keys::actionFor({ .character = U']', .command = true }, true) == KeyAction::zoomIn);
@@ -46,8 +58,28 @@ TEST_CASE("Track height uses Control on macOS and Ctrl elsewhere", "[keys]")
     CHECK(keys::actionFor({ .named = KeyInput::Named::up, .command = true }, true) == KeyAction::none);
     CHECK(keys::actionFor({ .named = KeyInput::Named::up, .command = true, .control = true }, false) == KeyAction::trackTaller);
     CHECK(keys::actionFor({ .named = KeyInput::Named::down, .command = true, .control = true }, false) == KeyAction::trackShorter);
-    CHECK(keys::actionFor({ .named = KeyInput::Named::up }, false) == KeyAction::none);
+    CHECK(keys::actionFor({ .named = KeyInput::Named::up, .alt = true }, false) == KeyAction::none);
     CHECK(keys::actionFor({ .named = KeyInput::Named::up, .shift = true, .command = true, .control = true }, false) == KeyAction::none);
+}
+
+TEST_CASE("Arrows move the keyboard cursor and Shift + arrows extend the selection", "[keys]")
+{
+    for (const auto isMac : { true, false })
+    {
+        CHECK(keys::actionFor({ .named = KeyInput::Named::up }, isMac) == KeyAction::cursorUp);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::down }, isMac) == KeyAction::cursorDown);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::left }, isMac) == KeyAction::cursorLeft);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::right }, isMac) == KeyAction::cursorRight);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::up, .shift = true }, isMac) == KeyAction::extendUp);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::left, .shift = true }, isMac) == KeyAction::extendLeft);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::right, .shift = true }, isMac) == KeyAction::extendRight);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::down, .shift = true }, isMac) == KeyAction::extendDown);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::left, .alt = true }, isMac) == KeyAction::none);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::enter }, isMac) == KeyAction::cursorEnter);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::escape }, isMac) == KeyAction::cursorEscape);
+        CHECK(keys::actionFor({ .named = KeyInput::Named::escape, .shift = true }, isMac) == KeyAction::none);
+    }
+    CHECK(keys::actionFor({ .named = KeyInput::Named::left, .control = true }, true) == KeyAction::none);
 }
 
 TEST_CASE("Home and End move the view to the timeline ends", "[keys]")

@@ -31,6 +31,14 @@ KeyInput keyInputFrom(const juce::KeyPress& key)
         input.named = KeyInput::Named::home;
     else if (code == juce::KeyPress::endKey)
         input.named = KeyInput::Named::end;
+    else if (code == juce::KeyPress::leftKey)
+        input.named = KeyInput::Named::left;
+    else if (code == juce::KeyPress::rightKey)
+        input.named = KeyInput::Named::right;
+    else if (code == juce::KeyPress::returnKey)
+        input.named = KeyInput::Named::enter;
+    else if (code == juce::KeyPress::escapeKey)
+        input.named = KeyInput::Named::escape;
     else if (code > 0)
         input.character = static_cast<char32_t>(code);
     return input;
@@ -39,6 +47,13 @@ KeyInput keyInputFrom(const juce::KeyPress& key)
 KeyAction keyActionFor(const juce::KeyPress& key)
 {
     return keys::actionFor(keyInputFrom(key), isMacPlatform());
+}
+
+SelectMode selectModeFrom(const juce::ModifierKeys& modifiers)
+{
+    if (modifiers.isCommandDown())
+        return SelectMode::toggle;
+    return SelectMode::replace;
 }
 
 }

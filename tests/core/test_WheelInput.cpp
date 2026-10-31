@@ -43,8 +43,8 @@ TEST_CASE("Shift + wheel scrolls time with either delta", "[wheel]")
 
 TEST_CASE("Alt + wheel zooms at the edit cursor, one step per notch", "[wheel]")
 {
-    CHECK(wheel::actionFor({ .alt = true }, notchUp) == WheelAction{ .zoomAtEditCursorSteps = 1.0 });
-    CHECK(wheel::actionFor({ .alt = true }, notchDown) == WheelAction{ .zoomAtEditCursorSteps = -1.0 });
+    CHECK(wheel::actionFor({ .alt = true }, notchUp) == WheelAction{ .zoomAtAnchorSteps = 1.0 });
+    CHECK(wheel::actionFor({ .alt = true }, notchDown) == WheelAction{ .zoomAtAnchorSteps = -1.0 });
 }
 
 TEST_CASE("Command + wheel zooms at the pointer", "[wheel]")

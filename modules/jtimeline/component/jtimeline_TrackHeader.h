@@ -17,6 +17,9 @@ class Timeline;
     tracks scroll in and out. To add controls such as mute and solo buttons, derive from this
     class, override trackChanged() to update them for the bound track, and pass a factory to
     Timeline::setTrackHeaderFactory().
+
+    Clicking a header selects its track. Headers are the tracks' accessibility elements: they are
+    titled with the track name, report whether the track is selected, and select it on press.
 */
 class TrackHeader : public juce::Component
 {
@@ -33,6 +36,11 @@ public:
 
     /** Called after the header is bound to another track or its track's info changes. Repaints by default. */
     virtual void trackChanged();
+
+    /** Selects the track: Command/Ctrl toggles it, Shift selects the tracks from the track cursor to it. Call this from an override. */
+    void mouseDown(const juce::MouseEvent& event) override;
+    /** @internal */
+    std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
     /** @internal */
     void bind(Timeline& owner, TrackId track, const TrackInfo& info);

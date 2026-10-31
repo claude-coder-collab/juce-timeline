@@ -23,6 +23,7 @@ TimelineDemo::TimelineDemo() :
     format.onChange = [this] { selectFormat(); };
 
     fit.onClick = [this] { timeline.zoomToFit(); };
+    zoomSelection.onClick = [this] { timeline.zoomToSelection(); };
     play.setClickingTogglesState(true);
     play.onClick = [this] {
         play.setButtonText(play.getToggleState() ? "Stop" : "Play");
@@ -61,10 +62,14 @@ TimelineDemo::TimelineDemo() :
         updateStatus();
     };
 
-    hint.setText("Drop audio files to add tracks. Click the ruler or overview: playhead / move. Wheel: tracks. Shift: time. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: zoom at playhead. "
-                 "Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + A: fit. Home/End: ends. Option/Alt + Shift + wheel, Cmd + Option/Ctrl + Alt + ]/[: waveform height.",
+    hint.setText("Drop audio files to add tracks. Click the ruler, a marker or the overview: playhead / move. Drag the ruler: time selection. Wheel: tracks. Shift: time. Option/Alt + wheel, T/R, Cmd/Ctrl + ]/[: "
+                 "zoom at selected clips, else edit cursor. Cmd/Ctrl + wheel or pinch: zoom at pointer. Option/Alt + A: fit. Option/Alt + F: zoom to selection. Home/End: ends. Space: play/stop.\n"
+                 "Click clips or headers to select (Cmd/Ctrl toggles, Shift: range from cursor); drag empty space or Shift + drag: rubber band; Cmd/Ctrl + A: all. Arrows, Shift + arrows, Return, Esc: keyboard cursor. "
+                 "Ctrl + Up/Down: track height. Option/Alt + Shift + wheel, Cmd + Option/Ctrl + Alt + ]/[: waveform height.",
         juce::dontSendNotification);
+    hint.setFont(juce::FontOptions{ 13.0f });
     hint.setMinimumHorizontalScale(0.6f);
+    hint.setJustificationType(juce::Justification::topLeft);
 
     timeline.setPeakCache(cache);
     overview.setPeakCache(cache);
@@ -76,6 +81,8 @@ TimelineDemo::TimelineDemo() :
         updateStatus();
     };
     timeline.onWaveformScaleChanged = [this] { updateStatus(); };
+    timeline.onSelectionChanged = [this] { updateStatus(); };
+    timeline.onPlayStop = [this] { play.triggerClick(); };
     timeline.onTimeClicked = [this](jtimeline::SamplePosition position) {
         timeline.setPlayhead(position);
         overview.setPlayhead(position);
@@ -87,9 +94,9 @@ TimelineDemo::TimelineDemo() :
         timeline.setMapping(timeline.getMapping().withSampleAt(position, static_cast<double>(timeline.getClipAreaBounds().getWidth()) / 2.0));
     };
 
-    for (auto* component : std::initializer_list<juce::Component*>{ &scenario, &format, &fit, &play, &follow, &taller, &shorter, &edit, &addTrack, &removeTrack, &addFilesButton, &slowBuilds, &hint, &status, &timeline, &overview })
+    for (auto* component : std::initializer_list<juce::Component*>{ &scenario, &format, &fit, &zoomSelection, &play, &follow, &taller, &shorter, &edit, &addTrack, &removeTrack, &addFilesButton, &slowBuilds, &hint, &status, &selectionStatus, &timeline, &overview })
         addAndMakeVisible(component);
-    setSize(1200, 780);
+    setSize(1200, 840);
     updateStatus();
     startTimer(250);
 }
@@ -174,6 +181,20 @@ void TimelineDemo::updateStatus()
             + jtimeline::ruler::formatTime(static_cast<double>(timeline.getPlayhead()) / rate, 0.001) + ", waveform " + juce::String{ timeline.getWaveformScale(), 2 } + "x. Peaks "
             + juce::String{ static_cast<double>(cache->getMemoryUsage()) / (1024.0 * 1024.0), 1 } + " MB" + (cache->isBuilding() ? ", building" : ""),
         juce::dontSendNotification);
+
+    const auto time = [rate](jtimeline::SamplePosition position) { return jtimeline::ruler::formatTime(static_cast<double>(position) / rate, 0.001); };
+    const auto& selection = timeline.getSelection();
+    auto text = juce::String{ "Selected: " } + juce::String{ static_cast<juce::int64>(selection.getClips().size()) } + " clips, " + juce::String{ static_cast<juce::int64>(selection.getTracks().size()) } + " tracks";
+    if (const auto range = timeline.getTimeSelection())
+        text << ", time " << time(range->start) << " to " << time(range->end);
+    const auto& cursor = timeline.getKeyboardCursor();
+    if (cursor.clip)
+        text << ". Cursor on clip " << juce::String{ static_cast<juce::int64>(*cursor.clip) };
+    else if (cursor.track)
+        text << ". Cursor on track " << juce::String{ static_cast<juce::int64>(*cursor.track) };
+    if (const auto range = timeline.getTimelineSelection())
+        text << ". Timeline selection " << time(range->start) << " to " << time(range->end);
+    selectionStatus.setText(text, juce::dontSendNotification);
 }
 
 void TimelineDemo::resized()
@@ -190,14 +211,15 @@ void TimelineDemo::resized()
     }
     area.removeFromTop(4);
     auto second = area.removeFromTop(28);
-    for (const auto& [button, width] : std::initializer_list<std::pair<juce::Component*, int>>{ { &fit, 100 }, { &play, 70 }, { &follow, 110 }, { &taller, 70 }, { &shorter, 70 } })
+    for (const auto& [button, width] : std::initializer_list<std::pair<juce::Component*, int>>{ { &fit, 100 }, { &zoomSelection, 130 }, { &play, 70 }, { &follow, 110 }, { &taller, 70 }, { &shorter, 70 } })
     {
         button->setBounds(second.removeFromLeft(width));
         second.removeFromLeft(6);
     }
     area.removeFromTop(4);
-    hint.setBounds(area.removeFromTop(22));
-    status.setBounds(area.removeFromBottom(24));
+    hint.setBounds(area.removeFromTop(52));
+    selectionStatus.setBounds(area.removeFromBottom(22));
+    status.setBounds(area.removeFromBottom(22));
     overview.setBounds(area.removeFromBottom(80));
     area.removeFromBottom(6);
     timeline.setBounds(area);
@@ -211,5 +233,15 @@ void TimelineDemo::applyArguments(const juce::StringArray& args)
     {
         const auto rate = DemoModel::getSampleRate();
         timeline.setVisibleRange({ .start = static_cast<jtimeline::SamplePosition>(args[index + 1].getDoubleValue() * rate), .end = static_cast<jtimeline::SamplePosition>(args[index + 2].getDoubleValue() * rate) });
+    }
+    if (const auto index = args.indexOf("--select"); index >= 0 && index + 2 < args.size())
+    {
+        const auto rate = DemoModel::getSampleRate();
+        const jtimeline::SampleRange range{ .start = static_cast<jtimeline::SamplePosition>(args[index + 1].getDoubleValue() * rate), .end = static_cast<jtimeline::SamplePosition>(args[index + 2].getDoubleValue() * rate) };
+        timeline.setTimeSelection(range);
+        timeline.setSelectedClips(model.clipsOnTracks(range, 2, 4));
+        if (const auto ids = timeline.getTrackIds(); ids.size() > 6)
+            timeline.setSelectedTracks(std::vector{ ids[6] });
+        timeline.grabKeyboardFocus();
     }
 }
