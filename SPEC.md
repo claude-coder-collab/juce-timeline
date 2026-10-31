@@ -1,6 +1,6 @@
 # JUCE Timeline — Specification (draft)
 
-A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks containing clips, with waveform previews. Private GitHub repository (`claude-coder-collab/juce-timeline`). Targets JUCE 8.
+A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks containing clips, with waveform previews. Public GitHub repository (`claude-coder-collab/juce-timeline`), with developer documentation on GitHub Pages (`docs/index.html`, published from `main`'s `docs/` folder with no build step: a single hand-written page, no generator). Targets JUCE 8.
 
 ## Modules
 

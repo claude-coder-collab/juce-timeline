@@ -2,6 +2,8 @@
 
 Two [JUCE 8](https://juce.com) modules for showing an audio timeline: tracks of clips with waveform previews, bound to your own model.
 
+Developer guide: https://claude-coder-collab.github.io/juce-timeline/
+
 - **jwaveform**: waveform peaks and drawing. It works without a timeline.
 - **jtimeline**: the timeline view. It depends on jwaveform.
 
