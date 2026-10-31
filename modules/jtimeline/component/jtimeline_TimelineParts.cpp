@@ -245,7 +245,7 @@ void ClipProxy::bind(ClipId id, const ClipInfo& info)
 
 std::unique_ptr<juce::AccessibilityHandler> ClipProxy::createAccessibilityHandler()
 {
-    return std::make_unique<SelectableHandler>(*this, juce::AccessibilityRole::listItem, [this] { return timeline.isClipSelected(clip); }, [this](SelectMode mode) { timeline.selectClip(clip, mode); });
+    return std::make_unique<SelectableHandler>(*this, juce::AccessibilityRole::button, [this] { return timeline.isClipSelected(clip); }, [this](SelectMode mode) { timeline.selectClip(clip, mode); }, [this] { timeline.setKeyboardCursor({ .track = std::nullopt, .clip = clip }); });
 }
 
 //==============================================================================
@@ -305,39 +305,7 @@ std::vector<ClipProxy*> LaneProxy::getVisibleProxies() const
 
 std::unique_ptr<juce::AccessibilityHandler> LaneProxy::createAccessibilityHandler()
 {
-    class Rows final : public juce::AccessibilityTableInterface
-    {
-    public:
-        explicit Rows(const LaneProxy& laneIn) :
-            lane(laneIn)
-        {
-        }
-
-        [[nodiscard]] int getNumRows() const override { return static_cast<int>(lane.rows.size()); }
-        [[nodiscard]] int getNumColumns() const override { return 1; }
-        [[nodiscard]] const juce::AccessibilityHandler* getHeaderHandler() const override { return nullptr; }
-        [[nodiscard]] const juce::AccessibilityHandler* getCellHandler(int /*row*/, int /*column*/) const override { return nullptr; }
-
-        [[nodiscard]] const juce::AccessibilityHandler* getRowHandler(int row) const override
-        {
-            return row >= 0 && std::cmp_less(row, lane.rows.size()) ? lane.rows[static_cast<std::size_t>(row)]->getAccessibilityHandler() : nullptr;
-        }
-
-        [[nodiscard]] juce::Optional<Span> getRowSpan(const juce::AccessibilityHandler& handler) const override
-        {
-            const auto found = std::ranges::find(lane.rows, &handler.getComponent());
-            if (found == lane.rows.end())
-                return juce::nullopt;
-            return Span{ .begin = static_cast<int>(found - lane.rows.begin()), .num = 1 };
-        }
-
-        [[nodiscard]] juce::Optional<Span> getColumnSpan(const juce::AccessibilityHandler& /*handler*/) const override { return Span{ .begin = 0, .num = 1 }; }
-        void showCell(const juce::AccessibilityHandler& /*handler*/) const override {}
-
-    private:
-        const LaneProxy& lane; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
-    };
-    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::list, juce::AccessibilityActions{}, juce::AccessibilityHandler::Interfaces{ std::make_unique<Rows>(*this) });
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::group);
 }
 
 //==============================================================================
@@ -501,6 +469,16 @@ std::vector<ClipProxy*> ClipArea::getVisibleProxies() const
             for (auto* proxy : lane->getVisibleProxies())
                 visible.push_back(proxy);
     return visible;
+}
+
+ClipProxy* ClipArea::proxyFor(ClipId clip) const
+{
+    for (const auto& lane : lanes)
+        if (lane->isVisible())
+            for (auto* proxy : lane->getVisibleProxies())
+                if (proxy->getClipId() == clip)
+                    return proxy;
+    return nullptr;
 }
 
 LaneProxy* ClipArea::laneFor(TrackId track) const

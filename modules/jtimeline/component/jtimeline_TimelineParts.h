@@ -12,12 +12,28 @@
 namespace jtimeline::detail
 {
 
+class SelectedValue final : public juce::AccessibilityTextValueInterface
+{
+public:
+    explicit SelectedValue(std::function<bool()> isSelectedIn) :
+        isSelected(std::move(isSelectedIn))
+    {
+    }
+
+    [[nodiscard]] bool isReadOnly() const override { return true; }
+    [[nodiscard]] juce::String getCurrentValueAsString() const override { return isSelected() ? "selected" : ""; }
+    void setValueAsString(const juce::String& /*newValue*/) override {}
+
+private:
+    std::function<bool()> isSelected;
+};
+
 class SelectableHandler final : public juce::AccessibilityHandler
 {
 public:
-    SelectableHandler(juce::Component& component, juce::AccessibilityRole role, std::function<bool()> isSelectedIn, const std::function<void(SelectMode)>& select) :
-        juce::AccessibilityHandler(component, role, juce::AccessibilityActions{}.addAction(juce::AccessibilityActionType::press, [select] { select(SelectMode::replace); }).addAction(juce::AccessibilityActionType::toggle, [select] { select(SelectMode::toggle); })),
-        isSelected(std::move(isSelectedIn))
+    SelectableHandler(juce::Component& component, juce::AccessibilityRole role, const std::function<bool()>& isSelectedIn, const std::function<void(SelectMode)>& select, const std::function<void()>& focused) :
+        juce::AccessibilityHandler(component, role, juce::AccessibilityActions{}.addAction(juce::AccessibilityActionType::press, [select] { select(SelectMode::replace); }).addAction(juce::AccessibilityActionType::toggle, [select] { select(SelectMode::toggle); }).addAction(juce::AccessibilityActionType::focus, focused), Interfaces{ std::make_unique<SelectedValue>(isSelectedIn) }),
+        isSelected(isSelectedIn)
     {
     }
 
@@ -139,6 +155,7 @@ public:
     void updateProxies();
     [[nodiscard]] std::vector<ClipProxy*> getVisibleProxies() const;
     [[nodiscard]] LaneProxy* laneFor(TrackId track) const;
+    [[nodiscard]] ClipProxy* proxyFor(ClipId clip) const;
 
 private:
     void handleAsyncUpdate() override;

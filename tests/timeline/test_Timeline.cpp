@@ -680,11 +680,19 @@ TEST_CASE("Timeline exposes visible clips and tracks to accessibility clients", 
     CHECK(clips[0]->getTitle() == "Take 1");
     CHECK(clips[0]->getParent() == children[1]);
     CHECK(children[1]->getParent() == timelineHandler);
-    const auto* table = children[1]->getTableInterface();
-    REQUIRE(table != nullptr);
-    CHECK(table->getNumRows() == 2);
-    CHECK(table->getRowHandler(1) == clips[1]);
-    CHECK(table->getRowSpan(*clips[1])->begin == 1);
+    REQUIRE(clips[1]->getValueInterface() != nullptr);
+    CHECK(clips[1]->getValueInterface()->getCurrentValueAsString() == "selected");
+    CHECK(clips[0]->getValueInterface()->getCurrentValueAsString() == "selected");
+
+    timeline.setKeyboardCursor({ .track = std::nullopt, .clip = named });
+    CHECK(timeline.keyPressed(juce::KeyPress{ juce::KeyPress::rightKey }));
+    CHECK(timeline.getKeyboardCursor().clip == other);
+    CHECK(area.proxyFor(other)->getAccessibilityHandler()->hasFocus(false));
+    CHECK(clips[0]->getValueInterface()->getCurrentValueAsString().isEmpty());
+    const auto selectedBefore = timeline.getSelectedClips();
+    CHECK(clips[0]->getActions().invoke(juce::AccessibilityActionType::focus));
+    CHECK(timeline.getKeyboardCursor().clip == named);
+    CHECK(timeline.getSelectedClips() == selectedBefore);
 
     timeline.setVisibleRange({ .start = 40 * second, .end = 60 * second });
     area.updateProxies();

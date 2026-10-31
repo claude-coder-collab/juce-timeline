@@ -1268,6 +1268,7 @@ bool Timeline::moveKeyboardCursor(CursorMove move, SelectMode mode)
     if (changed)
         selectionChanged();
     announce(describe(next));
+    focusAccessibilityOn(next);
     return true;
 }
 
@@ -1297,6 +1298,19 @@ void Timeline::reveal(const KeyboardCursor& cursor)
     if (cursor.track)
         if (const auto index = trackIndex(*cursor.track); index >= 0)
             revealTrack(index);
+}
+
+void Timeline::focusAccessibilityOn(const KeyboardCursor& cursor)
+{
+    clipArea->updateProxies();
+    juce::Component* target = nullptr;
+    if (cursor.clip)
+        target = clipArea->proxyFor(*cursor.clip);
+    else if (cursor.track)
+        target = headers->headerFor(*cursor.track);
+    if (target != nullptr)
+        if (auto* handler = target->getAccessibilityHandler())
+            handler->grabFocus();
 }
 
 void Timeline::revealTrack(int index)

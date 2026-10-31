@@ -44,9 +44,16 @@ void TrackHeader::mouseDown(const juce::MouseEvent& event)
 
 std::unique_ptr<juce::AccessibilityHandler> TrackHeader::createAccessibilityHandler()
 {
-    return std::make_unique<detail::SelectableHandler>(*this, juce::AccessibilityRole::group, [this] { return timeline != nullptr && timeline->isTrackSelected(trackId); }, [this](SelectMode mode) {
+    const auto isSelected = [this] { return timeline != nullptr && timeline->isTrackSelected(trackId); };
+    const auto select = [this](SelectMode mode) {
         if (timeline != nullptr)
-            timeline->selectTrack(trackId, mode); });
+            timeline->selectTrack(trackId, mode);
+    };
+    const auto focused = [this] {
+        if (timeline != nullptr)
+            timeline->setKeyboardCursor({ .track = trackId, .clip = std::nullopt });
+    };
+    return std::make_unique<detail::SelectableHandler>(*this, juce::AccessibilityRole::group, isSelected, select, focused);
 }
 
 void TrackHeader::paint(juce::Graphics& g)

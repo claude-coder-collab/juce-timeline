@@ -363,6 +363,7 @@ private:
     void cursorChanged();
     [[nodiscard]] NavigationContext navigationContext() const;
     void reveal(const KeyboardCursor& cursor);
+    void focusAccessibilityOn(const KeyboardCursor& cursor);
     void revealTrack(int index);
     [[nodiscard]] std::vector<ClipId> clipsInArea(juce::Rectangle<float> area) const;
     [[nodiscard]] juce::String describe(const KeyboardCursor& cursor) const;
