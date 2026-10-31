@@ -148,7 +148,8 @@
 
 ## 2026-10-30 — Milestones 6 and 7
 
-- **Milestones 6 and 7 combined.** Requested. The hosted CI run still needs a repository, so the GCC side of milestone 7 was checked locally.
+- **Milestones 6 and 7 combined.** Requested. GCC issues were found locally first; the first hosted run then passed on Linux (GCC 14) and Windows (MSVC) with no further changes.
+- **Private GitHub repository.** Created for the hosted CI run, as permitted by the user; the workflow stays manual-only.
 - **Raw samples live in the peak cache, not a separate `SampleCache`.** They share its memory bound, keys and handles; a separate class would duplicate the entry bookkeeping. Blocks go first under memory pressure, since re-reading a block is far cheaper than rebuilding peaks.
 - **Sample fetching has its own thread.** Peak builds run for the whole source, so on a shared pool a deep-zoom view could wait minutes behind builds of other files.
 - **Newest requests first, bounded queue.** Fast scrolling at deep zoom requests many spans that are soon off screen. Reading the latest first and dropping the oldest beyond a bound keeps what is on screen responsive without explicit cancellation; a block still wanted is requested again on the next paint.

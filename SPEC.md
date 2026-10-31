@@ -1,6 +1,6 @@
 # JUCE Timeline — Specification (draft)
 
-A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks containing clips, with waveform previews. Private repository. For now it is local only: there is no GitHub repository yet, so no remote, PRs or hosted CI until one is created. Targets JUCE 8.
+A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks containing clips, with waveform previews. Private GitHub repository (`claude-coder-collab/juce-timeline`). Targets JUCE 8.
 
 ## Modules
 
@@ -14,8 +14,8 @@ A pair of JUCE modules for viewing, and later editing, an audio timeline: tracks
 
 - Windows, macOS, Linux. Platform differences go through JUCE.
 - Develop on macOS (arm64). Build with CMake and Ninja Multi-Config.
-- Once a GitHub repository exists (not yet), CI is a single manually triggered workflow (`workflow_dispatch` only, no push, PR or schedule triggers) building and testing on Linux (GCC 14, under xvfb) and Windows (MSVC). Run it once to check portability, and again before a release. Sanitizers and clang-tidy run locally.
-- Until then, `tools/gcc_check.py` syntax-checks every project source with GCC (default `g++-14`) using the dev preset's compile commands, reporting only diagnostics in the project's own files (on macOS, JUCE's headers do not compile with GCC, but parsing continues past them). GCC's `-Wshadow` also flags parameters and locals that shadow members, including private members of JUCE base classes, which Clang does not; MSVC's /W4 does the same (C4458).
+- CI is a single manually triggered workflow (`workflow_dispatch` only, no push, PR or schedule triggers) building and testing on Linux (GCC 14, under xvfb) and Windows (MSVC). Run it once to check portability, and again before a release. Sanitizers and clang-tidy run locally.
+- Between runs, `tools/gcc_check.py` syntax-checks every project source with GCC (default `g++-14`) using the dev preset's compile commands, reporting only diagnostics in the project's own files (on macOS, JUCE's headers do not compile with GCC, but parsing continues past them). GCC's `-Wshadow` also flags parameters and locals that shadow members, including private members of JUCE base classes, which Clang does not; MSVC's /W4 does the same (C4458).
 - Tests: Catch2, with the model-independent logic (time mapping, hit testing, peak generation, snapping) tested without a display.
 
 ## Concepts
@@ -256,13 +256,13 @@ View-owned editing behaviour: drag ghost and preview, snapping (to grid, clip ed
 
 ## Milestones
 
-1. Skeleton: modules, CMake, demo app, time mapping with tests. The CI workflow file is written but not run until a repository exists.
+1. Skeleton: modules, CMake, demo app, time mapping with tests, and the CI workflow file.
 2. jwaveform: PeakData, PeakBuilder, PeakCache, drawing; standalone demo.
 3. Timeline view: tracks, clips (plain blocks), level-of-detail tiers and overview mode, ruler, virtual scrolling, zoom, playhead.
 4. Waveforms in clips, progressive loading, clip fades and gain scaling.
 5. Selection, keyboard, accessibility, markers and timeline selection.
 6. Deep zoom: raw sample fetching, raw-sample drawing, zoom to 16 px per sample.
-7. First Windows and Linux CI run, fix portability issues. Done together with 6, except the hosted run itself, which waits for a repository; GCC portability is checked locally with `tools/gcc_check.py`.
+7. First Windows and Linux CI run, fix portability issues. Done together with 6: GCC issues were found and fixed locally with `tools/gcc_check.py`, then the first hosted run passed on both platforms.
 8. Editing: move, trim, split, delete, with snapping.
 9. Editing: drag and drop in, duplicate, fade handles, undo forwarding.
 10. On-disk peak cache.
