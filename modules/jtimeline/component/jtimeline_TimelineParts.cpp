@@ -280,19 +280,64 @@ void LaneProxy::hideFrom(std::size_t index)
         proxies[index]->setVisible(false);
 }
 
-std::vector<ClipProxy*> LaneProxy::getVisibleProxies() const
+void LaneProxy::rowsUpdated()
 {
-    std::vector<ClipProxy*> visible;
+    rows.clear();
     for (const auto& proxy : proxies)
         if (proxy->isVisible())
-            visible.push_back(proxy.get());
-    std::ranges::sort(visible, {}, [](const ClipProxy* proxy) { return proxy->getX(); });
-    return visible;
+            rows.push_back(proxy.get());
+    std::ranges::stable_sort(rows, {}, [](const ClipProxy* proxy) { return proxy->getX(); });
+    std::vector<ClipId> ids;
+    ids.reserve(rows.size());
+    for (const auto* row : rows)
+        ids.push_back(row->getClipId());
+    if (ids == rowIds)
+        return;
+    rowIds = std::move(ids);
+    if (const auto* handler = getAccessibilityHandler())
+        handler->notifyAccessibilityEvent(juce::AccessibilityEvent::structureChanged);
+}
+
+std::vector<ClipProxy*> LaneProxy::getVisibleProxies() const
+{
+    return rows;
 }
 
 std::unique_ptr<juce::AccessibilityHandler> LaneProxy::createAccessibilityHandler()
 {
-    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::list);
+    class Rows final : public juce::AccessibilityTableInterface
+    {
+    public:
+        explicit Rows(const LaneProxy& laneIn) :
+            lane(laneIn)
+        {
+        }
+
+        [[nodiscard]] int getNumRows() const override { return static_cast<int>(lane.rows.size()); }
+        [[nodiscard]] int getNumColumns() const override { return 1; }
+        [[nodiscard]] const juce::AccessibilityHandler* getHeaderHandler() const override { return nullptr; }
+        [[nodiscard]] const juce::AccessibilityHandler* getCellHandler(int /*row*/, int /*column*/) const override { return nullptr; }
+
+        [[nodiscard]] const juce::AccessibilityHandler* getRowHandler(int row) const override
+        {
+            return row >= 0 && std::cmp_less(row, lane.rows.size()) ? lane.rows[static_cast<std::size_t>(row)]->getAccessibilityHandler() : nullptr;
+        }
+
+        [[nodiscard]] juce::Optional<Span> getRowSpan(const juce::AccessibilityHandler& handler) const override
+        {
+            const auto found = std::ranges::find(lane.rows, &handler.getComponent());
+            if (found == lane.rows.end())
+                return juce::nullopt;
+            return Span{ .begin = static_cast<int>(found - lane.rows.begin()), .num = 1 };
+        }
+
+        [[nodiscard]] juce::Optional<Span> getColumnSpan(const juce::AccessibilityHandler& /*handler*/) const override { return Span{ .begin = 0, .num = 1 }; }
+        void showCell(const juce::AccessibilityHandler& /*handler*/) const override {}
+
+    private:
+        const LaneProxy& lane; // NOLINT(cppcoreguidelines-avoid-const-or-ref-data-members)
+    };
+    return std::make_unique<juce::AccessibilityHandler>(*this, juce::AccessibilityRole::list, juce::AccessibilityActions{}, juce::AccessibilityHandler::Interfaces{ std::make_unique<Rows>(*this) });
 }
 
 //==============================================================================
@@ -430,6 +475,7 @@ void ClipArea::updateProxies()
                     break;
             }
             lane.hideFrom(inLane);
+            lane.rowsUpdated();
             if (inLane == 0)
                 continue;
             lane.bind(track.id, timeline.trackName(track.id));
@@ -442,6 +488,7 @@ void ClipArea::updateProxies()
     for (auto index = lanesUsed; index < lanes.size(); ++index)
     {
         lanes[index]->hideFrom(0);
+        lanes[index]->rowsUpdated();
         lanes[index]->setVisible(false);
     }
 }

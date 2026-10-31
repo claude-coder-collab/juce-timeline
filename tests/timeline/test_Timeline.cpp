@@ -680,6 +680,11 @@ TEST_CASE("Timeline exposes visible clips and tracks to accessibility clients", 
     CHECK(clips[0]->getTitle() == "Take 1");
     CHECK(clips[0]->getParent() == children[1]);
     CHECK(children[1]->getParent() == timelineHandler);
+    const auto* table = children[1]->getTableInterface();
+    REQUIRE(table != nullptr);
+    CHECK(table->getNumRows() == 2);
+    CHECK(table->getRowHandler(1) == clips[1]);
+    CHECK(table->getRowSpan(*clips[1])->begin == 1);
 
     timeline.setVisibleRange({ .start = 40 * second, .end = 60 * second });
     area.updateProxies();

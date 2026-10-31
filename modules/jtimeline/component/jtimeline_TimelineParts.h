@@ -91,12 +91,15 @@ public:
     [[nodiscard]] TrackId getTrackId() const { return track; }
     ClipProxy& proxyAt(Timeline& timeline, std::size_t index);
     void hideFrom(std::size_t index);
+    void rowsUpdated();
     [[nodiscard]] std::vector<ClipProxy*> getVisibleProxies() const;
     std::unique_ptr<juce::AccessibilityHandler> createAccessibilityHandler() override;
 
 private:
     TrackId track{};
     std::vector<std::unique_ptr<ClipProxy>> proxies;
+    std::vector<ClipProxy*> rows;
+    std::vector<ClipId> rowIds;
 };
 
 class TimelineTraverser final : public juce::ComponentTraverser
