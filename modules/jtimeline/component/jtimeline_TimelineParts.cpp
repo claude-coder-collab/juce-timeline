@@ -548,6 +548,7 @@ void ClipArea::paintTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods
     const auto width = static_cast<double>(getWidth());
     const auto bounds = g.getClipBounds().toFloat();
     const auto focused = timeline.hasKeyboardFocus(true);
+    const auto physicalScale = std::max(1.0e-3, static_cast<double>(g.getInternalContext().getPhysicalPixelScaleFactor()));
     const auto toStrip = [&](const SampleRange& span) {
         const auto left = mapping.toGraphicsX(span.start, width, clipMargin);
         const auto right = std::max(mapping.toGraphicsX(span.end, width, clipMargin), left + 1.0f);
@@ -599,6 +600,7 @@ void ClipArea::paintTrack(juce::Graphics& g, TimelineLookAndFeelMethods& methods
             const auto samplesPerPixel = mapping.getSamplesPerPixel();
             waveform.sourceStart = static_cast<double>(info->sourceOffset) + ((x1 - left) * samplesPerPixel);
             waveform.sourceEnd = static_cast<double>(info->sourceOffset) + ((x2 - left) * samplesPerPixel);
+            timeline.fetchSamples(*info->source, waveform, samplesPerPixel / physicalScale);
         }
         methods.drawTimelineClip(g, timeline, { .id = id, .info = info, .bounds = clipBounds, .cutLeft = left<-clipMargin, .cutRight = right> width + clipMargin, .tier = tier, .colour = timeline.colourFor(*info), .startX = left, .endX = right, .waveform = std::move(waveform), .selected = timeline.selection.contains(id), .cursor = focused && timeline.keyboardCursor.clip == id });
     }

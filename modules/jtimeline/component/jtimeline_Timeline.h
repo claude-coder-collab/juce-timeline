@@ -118,10 +118,7 @@ public:
     [[nodiscard]] const TimeMapping& getMapping() const { return mapping; }
     /** Sets the zoom and horizontal position, clamped to the zoom limits and scroll range. */
     void setMapping(const TimeMapping& newMapping);
-    /**
-        Returns the zoom limits for the current model and width. The deepest zoom is one level-0
-        peak (the cache's samples per peak) per physical pixel.
-    */
+    /** Returns the zoom limits for the current model and width: from 16 pixels per sample to the whole timeline. */
     [[nodiscard]] ZoomLimits getZoomLimits() const;
     /** Returns the samples visible in the clip area. */
     [[nodiscard]] SampleRange getVisibleRange() const;
@@ -218,7 +215,7 @@ public:
     /** Returns the keyboard cursor. */
     [[nodiscard]] const KeyboardCursor& getKeyboardCursor() const { return keyboardCursor; }
     /** Moves the keyboard cursor without changing the selection or scrolling. A clip's track is filled in from the model. */
-    void setKeyboardCursor(KeyboardCursor cursor);
+    void setKeyboardCursor(KeyboardCursor target);
     /**
         Moves the keyboard cursor as the arrow, Return and Escape keys do, selects what it lands on
         and scrolls it into view. Returns false if the cursor did not move.
@@ -349,9 +346,9 @@ private:
     void repaintPlayhead(SamplePosition position);
     void repaintClip(const ClipInfo& info);
     [[nodiscard]] juce::Rectangle<int> clipRect(const ClipInfo& info) const;
-    [[nodiscard]] double physicalPixelScale() const;
 
     ClipWaveform waveformFor(const ClipInfo& info, const jwaveform::WaveformSource& source);
+    void fetchSamples(const jwaveform::WaveformSource& source, ClipWaveform& waveform, double samplesPerPhysicalPixel);
     void waveformChanged(const juce::String& key);
     void releaseUnusedWaveforms();
 
@@ -362,11 +359,11 @@ private:
     void validateCursor();
     void cursorChanged();
     [[nodiscard]] NavigationContext navigationContext() const;
-    void reveal(const KeyboardCursor& cursor);
-    void focusAccessibilityOn(const KeyboardCursor& cursor);
+    void reveal(const KeyboardCursor& target);
+    void focusAccessibilityOn(const KeyboardCursor& target);
     void revealTrack(int index);
     [[nodiscard]] std::vector<ClipId> clipsInArea(juce::Rectangle<float> area) const;
-    [[nodiscard]] juce::String describe(const KeyboardCursor& cursor) const;
+    [[nodiscard]] juce::String describe(const KeyboardCursor& target) const;
     [[nodiscard]] juce::String trackName(TrackId track) const;
     static void announce(const juce::String& text);
 

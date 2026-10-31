@@ -57,11 +57,12 @@ public:
         double sourceStart = 0.0;
         double sourceEnd = 0.0;
         bool hasPeaks = false;
+        bool hasSamples = false;
     };
 
     void drawTimelineClip(juce::Graphics& g, const Timeline& timeline, const jtimeline::ClipPaint& clip) override
     {
-        records[clip.id] = { .id = clip.id, .status = clip.waveform.status, .sourceStart = clip.waveform.sourceStart, .sourceEnd = clip.waveform.sourceEnd, .hasPeaks = clip.waveform.peaks != nullptr };
+        records[clip.id] = { .id = clip.id, .status = clip.waveform.status, .sourceStart = clip.waveform.sourceStart, .sourceEnd = clip.waveform.sourceEnd, .hasPeaks = clip.waveform.peaks != nullptr, .hasSamples = !clip.waveform.samples.isEmpty() };
         TimelineLookAndFeelMethods::drawTimelineClip(g, timeline, clip);
     }
 
@@ -141,8 +142,7 @@ TEST_CASE("Timeline fits the whole timeline and clamps zoom", "[timeline]")
     timeline.setMapping(jtimeline::TimeMapping{ 1.0e-6, 0 });
     const auto deepest = timeline.getZoomLimits().minSamplesPerPixel;
     CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(deepest));
-    CHECK(deepest <= 64.0);
-    CHECK(deepest >= 16.0);
+    CHECK(deepest == Approx(1.0 / 16.0));
     timeline.setMapping(jtimeline::TimeMapping{ 1.0e12, 0 });
     CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(static_cast<double>(model.length) / 1000.0));
 
@@ -383,6 +383,16 @@ TEST_CASE("Timeline draws clip waveforms and releases them when not drawn", "[ti
         return lookAndFeel.records[missing].status == jtimeline::WaveformStatus::cannotOpen && lookAndFeel.records[built].status == jtimeline::WaveformStatus::ready;
     }));
     CHECK(lookAndFeel.records[built].hasPeaks);
+    CHECK_FALSE(lookAndFeel.records[built].hasSamples);
+
+    timeline.setVisibleRange({ .start = (8 * second) + 1000, .end = (8 * second) + 1500 });
+    CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(0.5));
+    CHECK(runUntil([&] {
+        paint(timeline);
+        return lookAndFeel.records[built].hasSamples;
+    }));
+    CHECK(cache->getSampleMemoryUsage() > 0);
+    timeline.setVisibleRange({ .start = 0, .end = 10 * second });
 
     timeline.setTrackHeight(track, 8);
     lookAndFeel.records.clear();
@@ -393,7 +403,7 @@ TEST_CASE("Timeline draws clip waveforms and releases them when not drawn", "[ti
 
     timeline.setMapping(jtimeline::TimeMapping{ 1.0e-6, 0 });
     CHECK(timeline.getMapping().getSamplesPerPixel() == Approx(timeline.getZoomLimits().minSamplesPerPixel));
-    CHECK(timeline.getZoomLimits().minSamplesPerPixel <= static_cast<double>(cache->getSamplesPerPeak()));
+    CHECK(timeline.getZoomLimits().minSamplesPerPixel == Approx(1.0 / 16.0));
     timeline.setLookAndFeel(nullptr);
 }
 

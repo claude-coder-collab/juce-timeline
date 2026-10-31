@@ -5,7 +5,7 @@ Two [JUCE 8](https://juce.com) modules for showing an audio timeline: tracks of 
 - **jwaveform**: waveform peaks and drawing. It works without a timeline.
 - **jtimeline**: the timeline view. It depends on jwaveform.
 
-Status: milestone 5. The timeline view shows tracks and clips with waveforms (drawn while they build), gain and fades, a ruler with markers and a timeline selection, zoom, scrolling, a playhead and an overview mode. Clips, tracks and time ranges can be selected by mouse and keyboard, and visible clips are exposed to screen readers. Zooming past one peak per pixel arrives in milestone 6 (see `SPEC.md`).
+Status: milestones 6 and 7. The timeline view shows tracks and clips with waveforms (drawn while they build), gain and fades, a ruler with markers and a timeline selection, zoom down to 16 pixels per sample, scrolling, a playhead and an overview mode. Clips, tracks and time ranges can be selected by mouse and keyboard, and visible clips are exposed to screen readers. Editing comes next (see `SPEC.md`).
 
 ### jtimeline
 
@@ -50,7 +50,7 @@ view.setSource({ .key = path + modificationTime,
 view.setVisibleRange(startSample, endSample);            // empty range = whole source
 ```
 
-The reader factory runs on background threads and must return a new reader per call. For custom drawing, use `jwaveform::drawWaveform` with a `PeakHandle` from `PeakCache::request`.
+The reader factory runs on background threads and must return a new reader per call. Zoomed in past the peaks, views read the raw samples they show through the same factory, so keep it working for as long as the source is shown. For custom drawing, use `jwaveform::drawWaveform` with a `PeakHandle` from `PeakCache::request`, passing `handle.getSamples(range)` when `jwaveform::usesRawSamples` says so.
 
 ## Using it
 
@@ -72,4 +72,4 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-`demo/waveform` and `demo/timeline` are the demo apps. `python3 tools/check.py` runs every local check: formatting, the tests, ASan/UBSan, TSan and clang-tidy.
+`demo/waveform` and `demo/timeline` are the demo apps. `python3 tools/check.py` runs every local check: formatting, the tests, ASan/UBSan, TSan and clang-tidy. `python3 tools/gcc_check.py` checks the sources with GCC (`g++-14` by default) after `cmake --preset dev`.

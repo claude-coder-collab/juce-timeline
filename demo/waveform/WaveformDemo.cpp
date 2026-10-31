@@ -130,12 +130,8 @@ double WaveformDemo::sampleRate() const
 
 jtimeline::ZoomLimits WaveformDemo::zoomLimits() const
 {
-    const auto data = mainView.getData();
-    const auto samplesPerPeak = data != nullptr ? data->getLevels().getSamplesPerPeak() : jwaveform::defaultSamplesPerPeak;
-    const auto physicalScale = std::max(1.0, static_cast<double>(juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->scale));
     const auto length = static_cast<jtimeline::SamplePosition>(sourceLength());
-    const auto width = static_cast<double>(mainView.getWidth());
-    return jtimeline::ZoomLimits::forTimeline(sampleRate(), length, width, samplesPerPeak / physicalScale);
+    return jtimeline::ZoomLimits::forTimeline(sampleRate(), length, static_cast<double>(mainView.getWidth()));
 }
 
 void WaveformDemo::openFile(const juce::File& file)

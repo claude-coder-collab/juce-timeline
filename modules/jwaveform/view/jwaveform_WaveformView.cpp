@@ -101,7 +101,13 @@ void WaveformView::paint(juce::Graphics& g)
         drawStyle.colour = resolveColour(waveformColourId);
         drawStyle.centreLineColour = resolveColour(centreLineColourId);
         const auto whole = !(visibleEnd > visibleStart);
-        drawWaveform(g, getLocalBounds().toFloat(), *data, whole ? 0.0 : visibleStart, whole ? static_cast<double>(data->getLength()) : visibleEnd, drawStyle);
+        const auto start = whole ? 0.0 : visibleStart;
+        const auto end = whole ? static_cast<double>(data->getLength()) : visibleEnd;
+        const auto physicalWidth = static_cast<double>(getWidth()) * static_cast<double>(g.getInternalContext().getPhysicalPixelScaleFactor());
+        RawSamples samples;
+        if (physicalWidth > 0.0 && usesRawSamples(*data, (end - start) / physicalWidth))
+            samples = handle.getSamples(rawRangeFor(start, end));
+        drawWaveform(g, getLocalBounds().toFloat(), *data, start, end, drawStyle, samples);
     }
 
     if (message.isNotEmpty())

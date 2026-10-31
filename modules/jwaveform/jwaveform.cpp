@@ -5,5 +5,6 @@
 #include "core/jwaveform_PeakColumns.cpp"
 #include "core/jwaveform_PeakData.cpp"
 #include "core/jwaveform_PeakLevels.cpp"
+#include "core/jwaveform_RawSamples.cpp"
 #include "view/jwaveform_WaveformDrawing.cpp"
 #include "view/jwaveform_WaveformView.cpp"

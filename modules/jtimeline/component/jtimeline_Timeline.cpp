@@ -374,16 +374,7 @@ juce::Colour Timeline::colourFor(const Track& track) const
 //==============================================================================
 ZoomLimits Timeline::getZoomLimits() const
 {
-    const auto samplesPerPeak = peakCache != nullptr ? peakCache->getSamplesPerPeak() : jwaveform::defaultSamplesPerPeak;
-    return ZoomLimits::forTimeline(sampleRate, length, clipAreaWidth(), static_cast<double>(samplesPerPeak) / physicalPixelScale());
-}
-
-double Timeline::physicalPixelScale() const
-{
-    auto scale = static_cast<double>(juce::Component::getApproximateScaleFactorForComponent(this));
-    if (const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect(getScreenBounds()))
-        scale *= display->scale;
-    return std::isfinite(scale) && scale > 0.0 ? scale : 1.0;
+    return ZoomLimits::forTimeline(sampleRate, length, clipAreaWidth());
 }
 
 TimeMapping Timeline::clamped(const TimeMapping& candidate) const
@@ -702,7 +693,15 @@ ClipWaveform Timeline::waveformFor(const ClipInfo& info, const jwaveform::Wavefo
         state = found->second.handle.getState();
     }
     const auto status = waveformStatusFor(state, peaks.get(), sampleRate);
-    return { .peaks = status == WaveformStatus::rateMismatch ? nullptr : std::move(peaks), .status = status, .sourceStart = 0.0, .sourceEnd = 0.0, .scale = getWaveformScaleFor(info.track), .envelope = envelopeFor(info) };
+    return { .peaks = status == WaveformStatus::rateMismatch ? nullptr : std::move(peaks), .status = status, .sourceStart = 0.0, .sourceEnd = 0.0, .scale = getWaveformScaleFor(info.track), .envelope = envelopeFor(info), .samples = {} };
+}
+
+void Timeline::fetchSamples(const jwaveform::WaveformSource& source, ClipWaveform& waveform, double samplesPerPhysicalPixel)
+{
+    if (waveform.peaks == nullptr || source.peaks != nullptr || !jwaveform::usesRawSamples(*waveform.peaks, samplesPerPhysicalPixel))
+        return;
+    if (const auto found = waveforms.find(source.key); found != waveforms.end())
+        waveform.samples = found->second.handle.getSamples(jwaveform::rawRangeFor(waveform.sourceStart, waveform.sourceEnd));
 }
 
 void Timeline::waveformChanged(const juce::String& key)
@@ -1215,20 +1214,20 @@ void Timeline::cursorChanged()
     headers->repaintHeaders();
 }
 
-void Timeline::setKeyboardCursor(KeyboardCursor cursor)
+void Timeline::setKeyboardCursor(KeyboardCursor target)
 {
-    if (cursor.clip)
+    if (target.clip)
     {
-        const auto info = model.isComplete() ? model.clipInfo(*cursor.clip) : std::nullopt;
+        const auto info = model.isComplete() ? model.clipInfo(*target.clip) : std::nullopt;
         if (!info)
             return;
-        cursor.track = info->track;
+        target.track = info->track;
     }
-    if (cursor.track && trackIndex(*cursor.track) < 0)
+    if (target.track && trackIndex(*target.track) < 0)
         return;
-    if (cursor == keyboardCursor)
+    if (target == keyboardCursor)
         return;
-    keyboardCursor = cursor;
+    keyboardCursor = target;
     cursorChanged();
 }
 
@@ -1272,11 +1271,11 @@ bool Timeline::moveKeyboardCursor(CursorMove move, SelectMode mode)
     return true;
 }
 
-void Timeline::reveal(const KeyboardCursor& cursor)
+void Timeline::reveal(const KeyboardCursor& target)
 {
-    if (cursor.clip)
+    if (target.clip)
     {
-        if (const auto info = model.clipInfo(*cursor.clip))
+        if (const auto info = model.clipInfo(*target.clip))
         {
             const auto range = normalised(*info).range();
             const auto visible = getVisibleRange();
@@ -1295,21 +1294,21 @@ void Timeline::reveal(const KeyboardCursor& cursor)
             }
         }
     }
-    if (cursor.track)
-        if (const auto index = trackIndex(*cursor.track); index >= 0)
+    if (target.track)
+        if (const auto index = trackIndex(*target.track); index >= 0)
             revealTrack(index);
 }
 
-void Timeline::focusAccessibilityOn(const KeyboardCursor& cursor)
+void Timeline::focusAccessibilityOn(const KeyboardCursor& target)
 {
     clipArea->updateProxies();
-    juce::Component* target = nullptr;
-    if (cursor.clip)
-        target = clipArea->proxyFor(*cursor.clip);
-    else if (cursor.track)
-        target = headers->headerFor(*cursor.track);
-    if (target != nullptr)
-        if (auto* handler = target->getAccessibilityHandler())
+    juce::Component* element = nullptr;
+    if (target.clip)
+        element = clipArea->proxyFor(*target.clip);
+    else if (target.track)
+        element = headers->headerFor(*target.track);
+    if (element != nullptr)
+        if (auto* handler = element->getAccessibilityHandler())
             handler->grabFocus();
 }
 
@@ -1365,13 +1364,13 @@ juce::String Timeline::describeClip(const ClipInfo& info) const
     return text;
 }
 
-juce::String Timeline::describe(const KeyboardCursor& cursor) const
+juce::String Timeline::describe(const KeyboardCursor& target) const
 {
-    if (cursor.clip)
-        if (const auto info = model.clipInfo(*cursor.clip))
-            return (info->name.isNotEmpty() ? info->name : juce::String{ "Untitled clip" }) + ", " + describeClip(*info) + (selection.contains(*cursor.clip) ? ", selected" : "");
-    if (cursor.track)
-        return trackName(*cursor.track) + ", track" + (selection.contains(*cursor.track) ? ", selected" : "");
+    if (target.clip)
+        if (const auto info = model.clipInfo(*target.clip))
+            return (info->name.isNotEmpty() ? info->name : juce::String{ "Untitled clip" }) + ", " + describeClip(*info) + (selection.contains(*target.clip) ? ", selected" : "");
+    if (target.track)
+        return trackName(*target.track) + ", track" + (selection.contains(*target.track) ? ", selected" : "");
     return {};
 }
 
