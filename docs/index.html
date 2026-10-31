@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>jtimeline and jwaveform</title>
+<meta name="description" content="Developer guide for the jtimeline and jwaveform JUCE modules.">
+<style>
+:root {
+    --bg: #fbfbfa;
+    --fg: #1d1d1f;
+    --muted: #5f6368;
+    --rule: #e2e2df;
+    --code-bg: #f1f1ee;
+    --accent: #2f6f8f;
+    --nav-w: 13rem;
+    color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #17181a;
+        --fg: #e6e6e3;
+        --muted: #9a9ca0;
+        --rule: #2d2f33;
+        --code-bg: #212327;
+        --accent: #7fb6d1;
+        color-scheme: dark;
+    }
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: 1rem; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+.layout {
+    display: grid;
+    grid-template-columns: var(--nav-w) minmax(0, 46rem);
+    gap: 3rem;
+    max-width: calc(var(--nav-w) + 46rem + 3rem);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 5rem;
+}
+nav {
+    position: sticky;
+    top: 2rem;
+    align-self: start;
+    font-size: 0.875rem;
+}
+nav .title { font-weight: 600; margin-bottom: 0.75rem; }
+nav ul { list-style: none; margin: 0; padding: 0; }
+nav li { margin: 0.2rem 0; }
+nav ul ul { padding-left: 0.9rem; }
+nav a { color: var(--muted); text-decoration: none; }
+nav a:hover { color: var(--accent); }
+h1 { font-size: 1.75rem; margin: 0 0 0.25rem; letter-spacing: -0.01em; }
+h2 {
+    font-size: 1.25rem;
+    margin: 2.75rem 0 0.75rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+}
+h3 { font-size: 1rem; margin: 1.75rem 0 0.5rem; }
+p, ul, ol { margin: 0 0 0.9rem; }
+li { margin: 0.2rem 0; }
+.lead { color: var(--muted); margin-bottom: 1.5rem; }
+a { color: var(--accent); }
+code, pre {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.84em;
+}
+code { background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+pre {
+    background: var(--code-bg);
+    padding: 0.9rem 1rem;
+    border-radius: 6px;
+    overflow-x: auto;
+    line-height: 1.5;
+    margin: 0 0 1rem;
+}
+pre code { background: none; padding: 0; font-size: 1em; }
+.c { color: var(--muted); }
+.table-wrap { overflow-x: auto; margin: 0 0 1rem; }
+table { border-collapse: collapse; width: 100%; font-size: 0.875rem; }
+th, td { text-align: left; padding: 0.4rem 0.75rem 0.4rem 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-weight: 600; }
+td:first-child { width: 45%; }
+.note { border-left: 3px solid var(--rule); padding-left: 0.9rem; color: var(--muted); }
+@media (max-width: 52rem) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 2rem; }
+    nav { position: static; margin-bottom: 1rem; }
+    nav ul ul { display: none; }
+    nav ul { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav aria-label="Contents">
+    <div class="title">Contents</div>
+    <ul>
+        <li><a href="#setup">Setup</a></li>
+        <li><a href="#concepts">Concepts</a></li>
+        <li><a href="#timeline">jtimeline</a>
+            <ul>
+                <li><a href="#model">Model</a></li>
+                <li><a href="#changes">Reporting changes</a></li>
+                <li><a href="#waveforms">Waveforms</a></li>
+                <li><a href="#view">View control</a></li>
+                <li><a href="#selection">Selection</a></li>
+                <li><a href="#overview">Overview strip</a></li>
+                <li><a href="#customising">Customising</a></li>
+            </ul>
+        </li>
+        <li><a href="#waveform">jwaveform</a>
+            <ul>
+                <li><a href="#cache">Peak cache</a></li>
+                <li><a href="#waveform-view">WaveformView</a></li>
+                <li><a href="#drawing">Custom drawing</a></li>
+            </ul>
+        </li>
+        <li><a href="#threading">Threading</a></li>
+        <li><a href="#bindings">Input bindings</a></li>
+    </ul>
+</nav>
+
+<main>
+<h1>jtimeline and jwaveform</h1>
+<p class="lead">JUCE 8 modules for displaying an audio timeline: tracks of clips with waveform previews, bound to an application's own data model.</p>
+
+<ul>
+    <li><strong>jwaveform</strong>: builds, caches and draws waveform peaks. Usable on its own.</li>
+    <li><strong>jtimeline</strong>: the timeline component. Depends on jwaveform.</li>
+</ul>
+<p class="note">The timeline is read-only for now: it displays, navigates and selects. Editing is planned.</p>
+
+<h2 id="setup">Setup</h2>
+<p>Requires JUCE 8 and C++23. Add both modules with CMake:</p>
+<pre><code>juce_add_module(path/to/juce-timeline/modules/jwaveform)
+juce_add_module(path/to/juce-timeline/modules/jtimeline)
+target_link_libraries(MyApp PRIVATE jtimeline jwaveform)</code></pre>
+<p>jwaveform uses <code>juce_audio_formats</code> and <code>juce_gui_basics</code>. Include <code>&lt;jtimeline/jtimeline.h&gt;</code> or <code>&lt;jwaveform/jwaveform.h&gt;</code>.</p>
+
+<h2 id="concepts">Concepts</h2>
+<ul>
+    <li><strong>Time</strong> is in samples: <code>SamplePosition</code> (<code>int64</code>) at the sample rate the model reports. <code>SampleRange</code> is half-open, <code>[start, end)</code>.</li>
+    <li><strong>Ids</strong>: <code>TrackId</code>, <code>ClipId</code> and <code>MarkerId</code> are <code>enum class</code> types over <code>uint64_t</code>, chosen by the model. Nothing is index-based except track order.</li>
+    <li><strong>Sources</strong> must be at the timeline sample rate. A clip's timeline position <code>p</code> plays source sample <code>sourceOffset + (p - start)</code>. Sample-rate conversion is the model's job.</li>
+    <li><strong>Overlapping clips</strong> on one track are allowed; the model's draw order decides which is on top.</li>
+    <li>A clip is either <code>ClipKind::audio</code> or <code>ClipKind::group</code>. A group stands for clips the model keeps elsewhere and has no waveform or fades.</li>
+</ul>
+
+<h2 id="timeline">jtimeline</h2>
+
+<h3 id="model">Model</h3>
+<p>A <code>TimelineModel</code> is a struct of <code>std::function</code> callbacks. The view pulls only what it shows and caches it. Everything the callbacks capture must outlive the binding.</p>
+<pre><code>jtimeline::TimelineNotifier notifier;                    <span class="c">// owned by your model</span>
+jtimeline::Timeline timeline;
+
+timeline.setModel({
+    .trackIds     = [&amp;] { return myTrackIds(); },        <span class="c">// display order</span>
+    .trackInfo    = [&amp;](jtimeline::TrackId id) { return myTrackInfo(id); },
+    .clipsInRange = [&amp;](jtimeline::TrackId id, auto start, auto end) { return myClips(id, start, end); },
+    .clipInfo     = [&amp;](jtimeline::ClipId id) { return myClipInfo(id); },
+    .sampleRate   = [&amp;] { return 48000.0; },
+    .length       = [&amp;] { return myLength(); },
+    .notifier     = &amp;notifier,
+});</code></pre>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Callback</th><th>Returns</th></tr></thead>
+<tbody>
+<tr><td><code>trackIds()</code></td><td>Tracks in display order.</td></tr>
+<tr><td><code>trackInfo(TrackId)</code></td><td><code>optional&lt;TrackInfo&gt;</code>: name, colour, height hint. Empty if the track does not exist.</td></tr>
+<tr><td><code>clipsInRange(TrackId, start, end)</code></td><td>Clips with <code>clip.start &lt; end &amp;&amp; clip.start + clip.length &gt; start</code>, in draw order (later on top). Must not scan the whole track; keep clips sorted by start.</td></tr>
+<tr><td><code>clipInfo(ClipId)</code></td><td><code>optional&lt;ClipInfo&gt;</code>: kind, track, start, length, source offset, name, colour, gain (dB), fades, muted, optional <code>WaveformSource</code>.</td></tr>
+<tr><td><code>sampleRate()</code></td><td>The timeline sample rate.</td></tr>
+<tr><td><code>length()</code></td><td>The timeline end, in samples.</td></tr>
+<tr><td><code>adjacentClip(TrackId, ClipId, Direction)</code></td><td>Optional. Previous or next clip in start order. Speeds up keyboard navigation.</td></tr>
+<tr><td><code>clipSpans(TrackId, start, end, minGap)</code></td><td>Optional. Occupied spans, merged where closer than <code>minGap</code>. Speeds up zoomed-out drawing. <code>mergeSpans()</code> helps implement it.</td></tr>
+<tr><td><code>markersInRange(start, end)</code></td><td>Optional. <code>Marker</code>s with <code>start &lt;= position &lt; end</code>, sorted. Ranges may extend outside <code>[0, length()]</code>.</td></tr>
+<tr><td><code>timelineSelection()</code></td><td>Optional. A range the model owns, such as the play or loop range.</td></tr>
+</tbody>
+</table></div>
+<p>A model missing a required callback shows as empty. Pass an empty <code>TimelineModel</code> to unbind.</p>
+
+<h3 id="changes">Reporting changes</h3>
+<p>Call <code>notifier.changed(change)</code> on the message thread after modifying the model. Every view bound to the model updates.</p>
+<pre><code>notifier.changed(jtimeline::ClipsChanged{ .ids = { movedClip, removedClip } });
+notifier.changed(jtimeline::TracksChanged{});
+notifier.changed(jtimeline::MarkersChanged{});           <span class="c">// markers or timeline selection</span>
+notifier.changed(jtimeline::FullReset{});                <span class="c">// includes sampleRate() or length()</span></code></pre>
+<p><code>ClipsChanged</code> covers added, removed, moved and edited clips; list removed ids too. Without a notifier, call <code>timeline.refresh()</code> instead. If the notifier is destroyed first, its views detach and show as empty.</p>
+
+<h3 id="waveforms">Waveforms</h3>
+<p>Set <code>ClipInfo::source</code> and give the timeline a shared cache:</p>
+<pre><code>auto cache = std::make_shared&lt;jwaveform::PeakCache&gt;();
+timeline.setPeakCache(cache);                            <span class="c">// share between views</span>
+
+info.source = jwaveform::WaveformSource{
+    .key = path + juce::String(modificationTime),
+    .createReader = [&amp;formats, path] {
+        return std::unique_ptr&lt;juce::AudioFormatReader&gt;{ formats.createReaderFor(juce::File{ path }) };
+    },
+};</code></pre>
+<p>Peaks are built in the background and drawn as they arrive. Missing files, read errors and sources at another sample rate are shown on the clip as labels. See <a href="#cache">Peak cache</a> for the factory's rules.</p>
+
+<h3 id="view">View control</h3>
+<pre><code>timeline.setVisibleRange({ .start = 0, .end = 48000 * 30 });
+timeline.zoomToFit();
+timeline.scrollTo(position);
+timeline.setPlayhead(position);                          <span class="c">// cheap; call from a timer while playing</span>
+timeline.setFollowPlayhead(true);                        <span class="c">// page when the playhead leaves the view</span>
+timeline.setWaveformScale(2.0);
+timeline.setTrackHeight(track, 112);</code></pre>
+<p>Zoom ranges from 16 pixels per sample to the whole timeline (<code>getZoomLimits()</code>).</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Callback</th><th>Called when</th></tr></thead>
+<tbody>
+<tr><td><code>onTimeClicked(position)</code></td><td>The ruler is clicked or dragged, or anywhere in overview mode.</td></tr>
+<tr><td><code>onPlayStop()</code></td><td>Space is pressed. Playback is up to the application.</td></tr>
+<tr><td><code>onSelectionChanged()</code></td><td>Selected clips, tracks or time range change.</td></tr>
+<tr><td><code>onViewChanged()</code></td><td>Zoom or scroll changes.</td></tr>
+<tr><td><code>onWaveformScaleChanged()</code></td><td>The view's or a track's waveform scale changes.</td></tr>
+</tbody>
+</table></div>
+
+<h3 id="selection">Selection</h3>
+<p>Each view has its own selection of clips, tracks and a time range. It is kept by id across model changes; ids that disappear are dropped.</p>
+<pre><code>timeline.onSelectionChanged = [&amp;] { showInspector(timeline.getSelectedClips()); };
+
+timeline.getSelectedClips();                             <span class="c">// sorted by id</span>
+timeline.getSelectedTracks();                            <span class="c">// display order</span>
+timeline.getTimeSelection();                             <span class="c">// optional&lt;SampleRange&gt;</span>
+timeline.setSelectedClips(clips);
+timeline.selectClip(clip, jtimeline::SelectMode::toggle);
+timeline.clearSelection();</code></pre>
+<p>Users select by clicking, rubber-band dragging, dragging on the ruler and with the keyboard (see <a href="#bindings">Input bindings</a>). Selecting clips also selects their tracks. Visible clips are exposed to screen readers.</p>
+
+<h3 id="overview">Overview strip</h3>
+<p>Bind a second <code>Timeline</code> to the same model and switch it to overview mode. It shows the whole timeline in compact form and reports clicks through <code>onTimeClicked</code>.</p>
+<pre><code>overview.setModel(model);
+overview.setPeakCache(cache);
+overview.setOverviewMode(true);
+main.onViewChanged = [&amp;] { overview.setHighlightedRange(main.getVisibleRange()); };
+overview.onTimeClicked = [&amp;](auto position) { main.scrollTo(position); };</code></pre>
+
+<h3 id="customising">Customising</h3>
+<ul>
+    <li><strong>Colours</strong>: <code>Timeline::ColourIds</code>, set on the timeline, a parent or the look and feel.</li>
+    <li><strong>Drawing</strong>: derive your LookAndFeel from <code>jtimeline::TimelineLookAndFeelMethods</code> as well and override what you need, such as <code>drawTimelineClip</code>, <code>drawTimelineRuler</code> or <code>getTimelineMetrics</code>.</li>
+    <li><strong>Track headers</strong>: subclass <code>TrackHeader</code> to add controls. Headers are pooled and rebound as tracks scroll; update contents in <code>trackChanged()</code>.</li>
+    <li><strong>Ruler labels</strong>: <code>setRulerFormatter</code>. The default is <code>h:mm:ss.mmm</code>.</li>
+</ul>
+<pre><code>struct MyHeader : jtimeline::TrackHeader
+{
+    MyHeader() { addAndMakeVisible(mute); }
+    void trackChanged() override { mute.setToggleState(isMuted(getTrackId()), juce::dontSendNotification); }
+    void resized() override { mute.setBounds(getLocalBounds().removeFromRight(28).reduced(4)); }
+    juce::ToggleButton mute;
+};
+
+timeline.setTrackHeaderFactory([] { return std::make_unique&lt;MyHeader&gt;(); });</code></pre>
+
+<h2 id="waveform">jwaveform</h2>
+
+<h3 id="cache">Peak cache</h3>
+<p><code>PeakCache</code> builds multi-resolution peaks on background threads, once per source key, and keeps them within a memory bound (default 256 MB). Share one cache across all views.</p>
+<pre><code>jwaveform::PeakCache::Options options;
+options.memoryLimitBytes = std::size_t{ 512 } * 1024 * 1024;
+options.threads = 2;
+auto cache = std::make_shared&lt;jwaveform::PeakCache&gt;(options);</code></pre>
+<ul>
+    <li>The <strong>key</strong> identifies the audio. Include something that changes when the file does, such as its modification time.</li>
+    <li><strong>createReader</strong> runs on background threads, possibly several at once, and must return a new reader per call, or <code>nullptr</code> if the audio cannot be opened.</li>
+    <li>At high zoom, the raw samples on screen are read through the same factory, so keep it valid while the source is shown.</li>
+    <li>For peaks you already have, set <code>WaveformSource::peaks</code> instead; the key and factory are then ignored.</li>
+</ul>
+
+<h3 id="waveform-view">WaveformView</h3>
+<p>A component showing one source, without a timeline.</p>
+<pre><code>jwaveform::WaveformView view;
+view.setPeakCache(cache);
+view.setSource({ .key = key, .createReader = factory });
+view.setVisibleRange(startSample, endSample);            <span class="c">// empty range = whole source</span>
+view.setStyle({ .channelMode = jwaveform::ChannelMode::combined });</code></pre>
+<p>Colours come from <code>WaveformView::ColourIds</code>. <code>getState()</code> reports <code>loading</code>, <code>ready</code>, <code>cannotOpen</code> or <code>readError</code>.</p>
+
+<h3 id="drawing">Custom drawing</h3>
+<p>Request a handle and draw from it in your own component. The handle keeps the build alive; <code>onChange</code> is called on the message thread as peaks arrive.</p>
+<pre><code>handle = cache-&gt;request(source, [this] { repaint(); });
+
+void paint(juce::Graphics&amp; g) override
+{
+    auto data = handle.getData();
+    if (data == nullptr)
+        return;
+
+    jwaveform::WaveformStyle style{ .colour = juce::Colours::lightblue };
+    auto spp = (end - start) / getWidth() / g.getInternalContext().getPhysicalPixelScaleFactor();
+    jwaveform::RawSamples samples;
+    if (jwaveform::usesRawSamples(*data, spp))
+        samples = handle.getSamples(jwaveform::rawRangeFor(start, end));
+
+    jwaveform::drawWaveform(g, getLocalBounds().toFloat(), *data, start, end, style, samples);
+}</code></pre>
+<p>Drawing costs one column per physical pixel. Partial peaks draw as far as they go.</p>
+
+<h2 id="threading">Threading</h2>
+<ul>
+    <li>All model callbacks, <code>TimelineNotifier::changed</code> and all cache and view methods are called on the message thread.</li>
+    <li>The only exception is <code>WaveformSource::createReader</code>, which is called on background threads.</li>
+    <li>Peak handles may outlive the cache.</li>
+</ul>
+
+<h2 id="bindings">Input bindings</h2>
+<p>Based on Pro Tools defaults. Letter keys work on any keyboard layout and only while the timeline has keyboard focus.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Action</th><th>macOS</th><th>Windows / Linux</th></tr></thead>
+<tbody>
+<tr><td>Scroll tracks</td><td>wheel</td><td>wheel</td></tr>
+<tr><td>Scroll time</td><td>Shift + wheel</td><td>Shift + wheel</td></tr>
+<tr><td>Zoom at the selection or edit cursor</td><td>Option + wheel</td><td>Alt + wheel</td></tr>
+<tr><td>Zoom at the pointer</td><td>Command + wheel, pinch</td><td>Ctrl + wheel, pinch</td></tr>
+<tr><td>Zoom in / out</td><td>T / R, Command + ] / [</td><td>T / R, Ctrl + ] / [</td></tr>
+<tr><td>Waveform height</td><td>Option + Shift + wheel, Command + Option + ] / [</td><td>Alt + Shift + wheel, Ctrl + Alt + ] / [</td></tr>
+<tr><td>Track height</td><td>Control + Up / Down</td><td>Ctrl + Up / Down</td></tr>
+<tr><td>Zoom to fit</td><td>Option + A</td><td>Alt + A</td></tr>
+<tr><td>Zoom to selection</td><td>Option + F</td><td>Alt + F</td></tr>
+<tr><td>Select all clips</td><td>Command + A</td><td>Ctrl + A</td></tr>
+<tr><td>Move cursor and select / add</td><td>arrows, Return, Escape / with Shift</td><td>arrows, Return, Escape / with Shift</td></tr>
+<tr><td>Select / extend / toggle</td><td>click / Shift + click / Command + click</td><td>click / Shift + click / Ctrl + click</td></tr>
+<tr><td>Rubber band</td><td>drag on empty space, Shift + drag anywhere</td><td>drag on empty space, Shift + drag anywhere</td></tr>
+<tr><td>Time selection</td><td>drag on the ruler</td><td>drag on the ruler</td></tr>
+<tr><td>Play / stop (<code>onPlayStop</code>)</td><td>Space</td><td>Space</td></tr>
+</tbody>
+</table></div>
+<p>On macOS, Control + Up / Down reaches the app only if Mission Control's shortcuts for those keys are turned off.</p>
+</main>
+</div>
+</body>
+</html>

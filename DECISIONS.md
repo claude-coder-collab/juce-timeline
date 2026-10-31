@@ -160,3 +160,9 @@
 - **Raw columns join to the previous sample.** At one to 64 samples per pixel, plain per-column min/max leaves gaps on steep slopes; including the previous sample makes the columns read as a continuous line.
 - **The zoom limit no longer depends on the peaks.** With raw samples, every source can be drawn down to 16 px per sample, as the spec always intended.
 - **`tools/gcc_check.py` instead of a GCC build on macOS.** Homebrew GCC cannot compile JUCE's macOS headers, but it keeps parsing after their errors, so `-fsyntax-only` over the dev compile commands still reports every GCC diagnostic in the project's own files. It found member-shadowing warnings Clang does not report, which `-Werror` would have turned into CI failures (and which MSVC's C4458 would also flag).
+
+
+## 2026-10-31 — Developer documentation
+
+- **Repository made public.** Requested, so GitHub Pages can host the developer documentation (Pages from a private repository needs a paid plan, and the site would be public anyway). History was checked for secrets and personal details first.
+- **One hand-written HTML page for the docs.** A how-to rather than an API reference; the doc comments in the headers cover details. Served from `docs/` on `main`, so no Pages workflow runs on push.
