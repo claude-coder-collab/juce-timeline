@@ -145,3 +145,16 @@
 - **Clip groups are plain groups of buttons.** A list with a table interface (as `ListBox` does) let VoiceOver enter it, but macOS presents lists as outlines browsed with VO + Up/Down, which does not match clips laid out left to right; QA still could not browse them. A group is browsed with VO + Left/Right, and a button can be pressed to select. Selection is read from a "selected" value, as macOS reports the selected state only through the parent's selected children.
 - **Screen-reader focus and the keyboard cursor follow each other.** Requested after QA: arrow-key moves give the landed-on element accessibility focus, and screen-reader focus moves the keyboard cursor (not the selection).
 
+
+## 2026-10-30 — Milestones 6 and 7
+
+- **Milestones 6 and 7 combined.** Requested. The hosted CI run still needs a repository, so the GCC side of milestone 7 was checked locally.
+- **Raw samples live in the peak cache, not a separate `SampleCache`.** They share its memory bound, keys and handles; a separate class would duplicate the entry bookkeeping. Blocks go first under memory pressure, since re-reading a block is far cheaper than rebuilding peaks.
+- **Sample fetching has its own thread.** Peak builds run for the whole source, so on a shared pool a deep-zoom view could wait minutes behind builds of other files.
+- **Newest requests first, bounded queue.** Fast scrolling at deep zoom requests many spans that are soon off screen. Reading the latest first and dropping the oldest beyond a bound keeps what is on screen responsive without explicit cancellation; a block still wanted is requested again on the next paint.
+- **One reader per source for fetching.** Opening a reader per block would reparse file headers for every 16384 frames.
+- **A failed raw read is not retried.** The source then draws stretched peaks, which beats a retry loop against a broken file; a fresh entry (after eviction) tries again.
+- **Samples are drawn at their centres.** The ruler's per-sample ticks mark sample boundaries, so a dot sits between two ticks, inside the sample's own span.
+- **Raw columns join to the previous sample.** At one to 64 samples per pixel, plain per-column min/max leaves gaps on steep slopes; including the previous sample makes the columns read as a continuous line.
+- **The zoom limit no longer depends on the peaks.** With raw samples, every source can be drawn down to 16 px per sample, as the spec always intended.
+- **`tools/gcc_check.py` instead of a GCC build on macOS.** Homebrew GCC cannot compile JUCE's macOS headers, but it keeps parsing after their errors, so `-fsyntax-only` over the dev compile commands still reports every GCC diagnostic in the project's own files. It found member-shadowing warnings Clang does not report, which `-Werror` would have turned into CI failures (and which MSVC's C4458 would also flag).

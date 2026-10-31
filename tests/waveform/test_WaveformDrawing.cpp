@@ -153,3 +153,83 @@ TEST_CASE("Waveform columns are snapped to physical pixels at fractional positio
         CHECK(partial == 0);
     }
 }
+
+namespace
+{
+
+jwaveform::RawSamples constantSamples(float value, jwaveform::SamplePosition length)
+{
+    const auto block = std::make_shared<jwaveform::SampleBlock>(0, 1, static_cast<int>(length));
+    std::ranges::fill(block->getChannel(0), value);
+    return { 1, { block } };
+}
+
+juce::Image renderSpan(const PeakData& data, double start, double end, const jwaveform::RawSamples& samples)
+{
+    juce::Image image{ juce::Image::ARGB, 100, 100, true };
+    juce::Graphics g{ image };
+    jwaveform::drawWaveform(g, { 0.0f, 0.0f, 100.0f, 100.0f }, data, start, end, {}, samples);
+    return image;
+}
+
+}
+
+TEST_CASE("Waveform drawing uses raw samples below one peak per pixel", "[drawing][samples]")
+{
+    const auto data = squareData(0.9f, 1);
+    CHECK(jwaveform::usesRawSamples(*data, 2.0));
+    CHECK_FALSE(jwaveform::usesRawSamples(*data, 64.0));
+
+    const auto stretched = renderSpan(*data, 0.0, 200.0, {});
+    CHECK(painted(stretched, 50, 10));
+    const auto raw = renderSpan(*data, 0.0, 200.0, constantSamples(0.2f, 6400));
+    CHECK_FALSE(painted(raw, 50, 10));
+    CHECK(painted(raw, 50, 40));
+
+    const auto zoomedOut = renderSpan(*data, 0.0, 6400.0, constantSamples(0.2f, 6400));
+    CHECK(painted(zoomedOut, 50, 10));
+
+    const auto partial = renderSpan(*data, 0.0, 200.0, constantSamples(0.2f, 100));
+    CHECK_FALSE(painted(partial, 20, 10));
+    CHECK(painted(partial, 80, 10));
+}
+
+TEST_CASE("Waveform drawing draws a line with dots through wide samples", "[drawing][samples]")
+{
+    const auto data = squareData(0.9f, 1);
+    const auto image = renderSpan(*data, 0.0, 10.0, constantSamples(0.5f, 6400));
+    CHECK(painted(image, 50, 25));
+    CHECK_FALSE(painted(image, 50, 10));
+    CHECK_FALSE(painted(image, 50, 75));
+    CHECK(painted(image, 5, 23));
+    CHECK_FALSE(painted(image, 10, 23));
+
+    const auto closer = renderSpan(*data, 0.0, 50.0, constantSamples(0.5f, 6400));
+    CHECK(painted(closer, 50, 25));
+    CHECK_FALSE(painted(closer, 51, 23));
+}
+
+TEST_CASE("WaveformView fetches raw samples when zoomed past the peaks", "[view][samples]")
+{
+    const juce::ScopedJuceInitialiser_GUI juce;
+    jwaveform::WaveformView view;
+    view.setBounds(0, 0, 200, 80);
+    const auto cache = std::make_shared<jwaveform::PeakCache>();
+    view.setPeakCache(cache);
+    view.setSource({ .key = "synthetic", .createReader = [] { return std::make_unique<SyntheticReader>(48000, 1, [](int, std::int64_t) { return 0.5f; }); }, .peaks = nullptr });
+    const auto runFor = [](const std::function<bool()>& done) {
+        const auto end = juce::Time::getMillisecondCounter() + 10'000;
+        while (!done() && juce::Time::getMillisecondCounter() < end)
+            juce::MessageManager::getInstance()->runDispatchLoopUntil(5);
+        return done();
+    };
+    REQUIRE(runFor([&] { return view.getState() == jwaveform::PeakState::ready; }));
+
+    static_cast<void>(view.createComponentSnapshot(view.getLocalBounds(), true, 1.0f));
+    CHECK(cache->getSampleMemoryUsage() == 0);
+    view.setVisibleRange(100.0, 300.0);
+    CHECK(runFor([&] {
+        static_cast<void>(view.createComponentSnapshot(view.getLocalBounds(), true, 1.0f));
+        return cache->getSampleMemoryUsage() > 0;
+    }));
+}

@@ -54,8 +54,8 @@ TimelineDemo::TimelineDemo() :
     };
     addFilesButton.onClick = [this] {
         chooser = std::make_unique<juce::FileChooser>("Add audio files", juce::File{}, "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3");
-        const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems; // NOLINT(bugprone-signed-bitwise)
-        chooser->launchAsync(flags, [this](const juce::FileChooser& fc) { addFiles(fc.getResults()); });
+        const auto modes = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::canSelectMultipleItems; // NOLINT(bugprone-signed-bitwise)
+        chooser->launchAsync(modes, [this](const juce::FileChooser& fc) { addFiles(fc.getResults()); });
     };
     slowBuilds.onClick = [this] {
         model.setSlowBuilds(slowBuilds.getToggleState());
@@ -128,7 +128,7 @@ void TimelineDemo::selectFormat()
 
 bool TimelineDemo::isIdle() const
 {
-    return !cache->isBuilding();
+    return !cache->isBuilding() && !cache->isFetchingSamples();
 }
 
 bool TimelineDemo::isInterestedInFileDrag(const juce::StringArray& /*files*/)
@@ -187,11 +187,11 @@ void TimelineDemo::updateStatus()
     auto text = juce::String{ "Selected: " } + juce::String{ static_cast<juce::int64>(selection.getClips().size()) } + " clips, " + juce::String{ static_cast<juce::int64>(selection.getTracks().size()) } + " tracks";
     if (const auto range = timeline.getTimeSelection())
         text << ", time " << time(range->start) << " to " << time(range->end);
-    const auto& cursor = timeline.getKeyboardCursor();
-    if (cursor.clip)
-        text << ". Cursor on clip " << juce::String{ static_cast<juce::int64>(*cursor.clip) };
-    else if (cursor.track)
-        text << ". Cursor on track " << juce::String{ static_cast<juce::int64>(*cursor.track) };
+    const auto& keyboardCursor = timeline.getKeyboardCursor();
+    if (keyboardCursor.clip)
+        text << ". Cursor on clip " << juce::String{ static_cast<juce::int64>(*keyboardCursor.clip) };
+    else if (keyboardCursor.track)
+        text << ". Cursor on track " << juce::String{ static_cast<juce::int64>(*keyboardCursor.track) };
     if (const auto range = timeline.getTimelineSelection())
         text << ". Timeline selection " << time(range->start) << " to " << time(range->end);
     selectionStatus.setText(text, juce::dontSendNotification);

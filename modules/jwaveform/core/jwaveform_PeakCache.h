@@ -1,6 +1,7 @@
 #pragma once
 
 #include "jwaveform_PeakData.h"
+#include "jwaveform_RawSamples.h"
 
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_events/juce_events.h>
@@ -78,6 +79,15 @@ public:
     /** Returns the waveform's state. */
     [[nodiscard]] PeakState getState() const;
 
+    /**
+        Returns the raw samples the cache holds for a span of the source, and queues the missing
+        blocks to be read through the source's reader factory; onChange is called as they arrive.
+        The most recently requested blocks are read first. Returns an empty set for a handle with
+        ready-made peaks or no cache, before the build has opened the source, or once reading raw
+        samples has failed.
+    */
+    [[nodiscard]] RawSamples getSamples(SampleRange range) const;
+
 private:
     friend class PeakCache;
     void release();
@@ -98,7 +108,12 @@ private:
     no handle requests its key any more; partial and complete peaks stay cached, and a cancelled
     build resumes where it stopped when the key is requested again.
 
-    The memory bound evicts the least recently requested peaks that no handle holds and no build is
+    It also holds blocks of raw samples, read on request (PeakHandle::getSamples()) for drawing at
+    zooms finer than the peaks, on threads of their own so they are not held up by builds. The most
+    recently requested blocks are read first, and the queue is bounded.
+
+    The memory bound covers peaks and raw samples. It evicts the least recently used raw sample
+    blocks first, then the least recently requested peaks that no handle holds and no build is
     writing. Call its methods on the message thread. Share one cache between views of the same
     audio with std::shared_ptr.
 */
@@ -112,6 +127,9 @@ public:
         int threads = 2; /**< The number of build threads. */
         int samplesPerPeak = defaultSamplesPerPeak; /**< Level-0 resolution of new peaks. */
         int notificationIntervalMs = 30; /**< The minimum time between progress callbacks for a key. */
+        int sampleBlockFrames = 16384; /**< The frames in each block of raw samples. */
+        int sampleThreads = 1; /**< The number of threads reading raw samples, separate from the build threads. */
+        int maxPendingSampleBlocks = 256; /**< Raw sample blocks queued beyond this drop the oldest requests. */
     };
 
     /** Creates a cache. */
@@ -134,7 +152,7 @@ public:
     */
     [[nodiscard]] PeakHandle request(const WaveformSource& source, std::function<void()> onChange = {});
 
-    /** Returns the bytes of peaks held. */
+    /** Returns the bytes of peaks and raw samples held. */
     [[nodiscard]] std::size_t getMemoryUsage() const;
     /** Changes the memory bound, evicting at once if needed. */
     void setMemoryLimit(std::size_t bytes);
@@ -142,8 +160,12 @@ public:
     [[nodiscard]] std::size_t getNumEntries() const;
     /** Returns true while any build is running. */
     [[nodiscard]] bool isBuilding() const;
+    /** Returns true while raw sample blocks are queued or being read. */
+    [[nodiscard]] bool isFetchingSamples() const;
     /** Returns the level-0 resolution of the peaks this cache builds. */
     [[nodiscard]] int getSamplesPerPeak() const;
+    /** Returns the bytes of raw samples held. */
+    [[nodiscard]] std::size_t getSampleMemoryUsage() const;
 
 private:
     std::shared_ptr<detail::PeakCacheImpl> impl;

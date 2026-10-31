@@ -19,6 +19,8 @@ add_executable(jtimeline_tests
     waveform/test_PeakColumns.cpp
     waveform/test_PeakConcurrency.cpp
     waveform/test_PeakData.cpp
+    waveform/test_RawSamples.cpp
+    waveform/test_SampleFetching.cpp
     waveform/test_WaveformDrawing.cpp)
 target_link_libraries(jtimeline_tests PRIVATE jtimeline::jtimeline Catch2::Catch2WithMain)
 jtimeline_configure_target(jtimeline_tests)

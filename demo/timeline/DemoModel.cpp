@@ -276,7 +276,7 @@ std::optional<jtimeline::ClipId> DemoModel::adjacentClip(jtimeline::TrackId id, 
     const auto info = clips.find(clip);
     if (info == clips.end())
         return std::nullopt;
-    const auto key = [this](jtimeline::ClipId id) { return std::pair{ clips.at(id).info.start, id }; };
+    const auto key = [this](jtimeline::ClipId other) { return std::pair{ clips.at(other).info.start, other }; };
     const auto found = std::ranges::lower_bound(track->byStart, std::pair{ info->second.info.start, clip }, {}, key);
     if (found == track->byStart.end() || *found != clip)
         return std::nullopt;

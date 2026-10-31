@@ -101,7 +101,7 @@ void TimelineLookAndFeelMethods::drawTimelineClipWaveform(juce::Graphics& g, con
         style.displayScale = waveform.scale;
         style.envelope = waveform.envelope;
         style.colour = timeline.resolveColour(Timeline::waveformColourId).withMultipliedAlpha(dim);
-        jwaveform::drawWaveform(g, area, *waveform.peaks, waveform.sourceStart, waveform.sourceEnd, style);
+        jwaveform::drawWaveform(g, area, *waveform.peaks, waveform.sourceStart, waveform.sourceEnd, style, waveform.samples);
     }
 
     const auto message = [&waveform] -> juce::String {

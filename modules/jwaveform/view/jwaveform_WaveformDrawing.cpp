@@ -14,7 +14,54 @@ int laneCountFor(int numChannels, float areaHeight, const WaveformStyle& style)
     return areaHeight / static_cast<float>(numChannels) < style.minLaneHeight ? 1 : numChannels;
 }
 
-void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData& data, double sourceStart, double sourceEnd, const WaveformStyle& style)
+namespace
+{
+
+struct SampleLine
+{
+    juce::Rectangle<float> area;
+    double sourceStart = 0.0;
+    double pixelsPerSample = 1.0;
+    double centre = 0.0;
+    double half = 0.0;
+    SampleRange positions;
+};
+
+void drawSampleLine(const juce::Graphics& g, const RawSamples& samples, int channel, const SampleLine& line, const WaveformStyle& style)
+{
+    const auto dots = line.pixelsPerSample >= static_cast<double>(style.sampleDotSpacing);
+    const auto radius = style.sampleDotDiameter / 2.0f;
+    juce::Path path;
+    juce::Path dotPath;
+    auto open = false;
+    for (auto position = line.positions.start; position < line.positions.end; ++position)
+    {
+        if (!samples.contains(position))
+        {
+            open = false;
+            continue;
+        }
+        const auto centreSample = static_cast<double>(position) + 0.5;
+        const auto gain = style.envelope.gainAt(centreSample) * style.displayScale;
+        const auto value = std::clamp(static_cast<double>(samples.get(channel, position)) * gain, -1.0, 1.0);
+        const auto x = static_cast<float>(static_cast<double>(line.area.getX()) + ((centreSample - line.sourceStart) * line.pixelsPerSample));
+        const auto y = static_cast<float>(line.centre - (value * line.half));
+        if (open)
+            path.lineTo(x, y);
+        else
+            path.startNewSubPath(x, y);
+        open = true;
+        if (dots)
+            dotPath.addEllipse(x - radius, y - radius, style.sampleDotDiameter, style.sampleDotDiameter);
+    }
+    g.strokePath(path, juce::PathStrokeType{ style.lineThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded });
+    if (dots)
+        g.fillPath(dotPath);
+}
+
+}
+
+void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData& data, double sourceStart, double sourceEnd, const WaveformStyle& style, const RawSamples& samples)
 {
     if (area.isEmpty() || !(sourceEnd > sourceStart))
         return;
@@ -38,6 +85,14 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
     const auto samplesPerColumn = samplesPerPixel * columnWidth;
     const auto firstSample = sourceStart + ((firstX - static_cast<double>(area.getX())) * samplesPerPixel);
 
+    const auto raw = !samples.isEmpty() && usesRawSamples(data, samplesPerColumn);
+    const auto asLine = raw && samplesPerColumn < 1.0;
+    const auto lastSample = firstSample + (static_cast<double>(columnCount) * samplesPerColumn);
+    const auto linePositions = SampleRange{ .start = static_cast<SamplePosition>(std::floor(firstSample)) - 1, .end = static_cast<SamplePosition>(std::ceil(lastSample)) + 1 }.intersection({ .start = 0, .end = data.getLength() });
+    const juce::Graphics::ScopedSaveState saved{ g };
+    if (asLine)
+        g.reduceClipRegion(area.getSmallestIntegerContainer());
+
     std::vector<ColumnPeak> columns(columnCount);
     std::vector<float> gains(columnCount);
     for (std::size_t x = 0; x < columnCount; ++x)
@@ -58,7 +113,22 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
             g.fillRect(juce::Rectangle<double>{ firstX, centre, static_cast<double>(columnCount) * columnWidth, columnWidth }.toFloat());
         }
 
-        computeColumns(data, lanes == 1 ? allChannels : lane, firstSample, samplesPerColumn, columns);
+        const auto channel = lanes == 1 ? allChannels : lane;
+        computeColumns(data, channel, firstSample, samplesPerColumn, columns);
+        if (asLine)
+        {
+            for (std::size_t x = 0; x < columnCount; ++x)
+            {
+                const auto from = firstSample + (static_cast<double>(x) * samplesPerColumn);
+                const auto start = static_cast<SamplePosition>(std::floor(from));
+                if (samples.contains(SampleRange{ .start = start, .end = std::max(start + 1, static_cast<SamplePosition>(std::ceil(from + samplesPerColumn))) }))
+                    columns[x].valid = false;
+            }
+        }
+        else if (raw)
+        {
+            computeRawColumns(samples, channel, data.getLength(), firstSample, samplesPerColumn, columns);
+        }
         rects.clear();
         rects.ensureStorageAllocated(static_cast<int>(columnCount));
         for (std::size_t x = 0; x < columnCount; ++x)
@@ -74,6 +144,15 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
         }
         g.setColour(style.colour);
         g.fillRectList(rects);
+
+        if (asLine)
+        {
+            const SampleLine line{ .area = area, .sourceStart = sourceStart, .pixelsPerSample = 1.0 / samplesPerPixel, .centre = centre, .half = half, .positions = linePositions };
+            const auto firstChannel = channel == allChannels ? 0 : channel;
+            const auto endChannel = channel == allChannels ? data.getNumChannels() : channel + 1;
+            for (auto c = firstChannel; c < endChannel; ++c)
+                drawSampleLine(g, samples, c, line, style);
+        }
     }
 }
 

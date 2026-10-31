@@ -31,8 +31,8 @@ private:
 class SelectableHandler final : public juce::AccessibilityHandler
 {
 public:
-    SelectableHandler(juce::Component& component, juce::AccessibilityRole role, const std::function<bool()>& isSelectedIn, const std::function<void(SelectMode)>& select, const std::function<void()>& focused) :
-        juce::AccessibilityHandler(component, role, juce::AccessibilityActions{}.addAction(juce::AccessibilityActionType::press, [select] { select(SelectMode::replace); }).addAction(juce::AccessibilityActionType::toggle, [select] { select(SelectMode::toggle); }).addAction(juce::AccessibilityActionType::focus, focused), Interfaces{ std::make_unique<SelectedValue>(isSelectedIn) }),
+    SelectableHandler(juce::Component& owner, juce::AccessibilityRole roleIn, const std::function<bool()>& isSelectedIn, const std::function<void(SelectMode)>& select, const std::function<void()>& focused) :
+        juce::AccessibilityHandler(owner, roleIn, juce::AccessibilityActions{}.addAction(juce::AccessibilityActionType::press, [select] { select(SelectMode::replace); }).addAction(juce::AccessibilityActionType::toggle, [select] { select(SelectMode::toggle); }).addAction(juce::AccessibilityActionType::focus, focused), Interfaces{ std::make_unique<SelectedValue>(isSelectedIn) }),
         isSelected(isSelectedIn)
     {
     }

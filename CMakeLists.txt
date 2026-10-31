@@ -38,6 +38,7 @@ add_library(jwaveform_static STATIC
     modules/jwaveform/core/jwaveform_PeakColumns.cpp
     modules/jwaveform/core/jwaveform_PeakData.cpp
     modules/jwaveform/core/jwaveform_PeakLevels.cpp
+    modules/jwaveform/core/jwaveform_RawSamples.cpp
     modules/jwaveform/view/jwaveform_WaveformDrawing.cpp
     modules/jwaveform/view/jwaveform_WaveformView.cpp)
 add_library(jtimeline::jwaveform ALIAS jwaveform_static)

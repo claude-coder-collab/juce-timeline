@@ -22,6 +22,7 @@ END_JUCE_MODULE_DECLARATION
 #include "core/jwaveform_PeakColumns.h"
 #include "core/jwaveform_PeakData.h"
 #include "core/jwaveform_PeakLevels.h"
+#include "core/jwaveform_RawSamples.h"
 #include "core/jwaveform_SampleRange.h"
 #include "view/jwaveform_WaveformDrawing.h"
 #include "view/jwaveform_WaveformView.h"

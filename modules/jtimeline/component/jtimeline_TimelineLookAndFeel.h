@@ -41,6 +41,7 @@ struct ClipWaveform
     double sourceEnd = 0.0; /**< The source position at the right edge of ClipPaint::bounds. */
     double scale = 1.0; /**< The waveform vertical scale of the clip's track. */
     jwaveform::WaveformEnvelope envelope; /**< The clip's gain and fades. */
+    jwaveform::RawSamples samples; /**< Raw samples for the span, at zooms finer than the peaks; empty otherwise or until they arrive. */
 };
 
 /** A clip as the Timeline asks the look and feel to draw it. */
