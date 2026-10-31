@@ -70,10 +70,23 @@ private:
     std::vector<std::shared_ptr<const SampleBlock>> blocks;
 };
 
+/** The radius of the band-limited interpolation kernel: an interpolated value reads this many samples either side. */
+inline constexpr int interpolationRadius = 8;
+
+/** Returns the Lanczos kernel of radius interpolationRadius (a windowed sinc) at an offset in samples; 0 outside the radius. */
+[[nodiscard]] double interpolationKernel(double offset);
+
+/**
+    Returns the band-limited value between samples: the samples convolved with
+    interpolationKernel(). Index 0 is samples[0]; samples outside the span count as silent, so pass
+    interpolationRadius samples of context either side.
+*/
+[[nodiscard]] float interpolate(std::span<const float> samples, double index);
+
 /** Returns true if drawing at this many source samples per physical pixel uses raw samples where they are held. */
 [[nodiscard]] bool usesRawSamples(const PeakData& data, double samplesPerPhysicalPixel);
 
-/** Returns the whole samples a fractional source span touches, plus one either side for joining lines. */
+/** Returns the whole samples a fractional source span touches, plus the context interpolation reads either side. */
 [[nodiscard]] SampleRange rawRangeFor(double sourceStart, double sourceEnd);
 
 /**

@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 using Catch::Approx;
@@ -47,9 +48,9 @@ TEST_CASE("RawSamples finds samples across blocks and reports gaps", "[samples]"
     CHECK(samples.get(3, 25) == 0.0f);
 }
 
-TEST_CASE("rawRangeFor widens a fractional span by a sample either side", "[samples]")
+TEST_CASE("rawRangeFor widens a fractional span by the interpolation context", "[samples]")
 {
-    CHECK(jwaveform::rawRangeFor(10.5, 20.2) == jwaveform::SampleRange{ .start = 9, .end = 22 });
+    CHECK(jwaveform::rawRangeFor(10.5, 20.2) == jwaveform::SampleRange{ .start = 10 - jwaveform::interpolationRadius - 1, .end = 21 + jwaveform::interpolationRadius + 1 });
     CHECK(jwaveform::rawRangeFor(5.0, 5.0).isEmpty());
     CHECK(jwaveform::rawRangeFor(std::nan(""), 1.0).isEmpty());
 }
@@ -86,4 +87,38 @@ TEST_CASE("Raw columns leave columns without samples unchanged", "[samples]")
 
     jwaveform::computeRawColumns({}, 0, 12, 0.0, 1.0, past);
     CHECK(past[1] == stretched);
+}
+
+TEST_CASE("The interpolation kernel is a windowed sinc", "[samples]")
+{
+    CHECK(jwaveform::interpolationKernel(0.0) == 1.0);
+    CHECK(jwaveform::interpolationKernel(1.0) == Approx(0.0).margin(1.0e-12));
+    CHECK(jwaveform::interpolationKernel(-3.0) == Approx(0.0).margin(1.0e-12));
+    CHECK(jwaveform::interpolationKernel(0.5) == Approx(jwaveform::interpolationKernel(-0.5)));
+    CHECK(jwaveform::interpolationKernel(0.5) > 0.6);
+    CHECK(jwaveform::interpolationKernel(1.5) < 0.0);
+    CHECK(jwaveform::interpolationKernel(jwaveform::interpolationRadius) == 0.0);
+}
+
+TEST_CASE("Interpolation passes through the samples and reconstructs a band-limited signal", "[samples]")
+{
+    const auto sine = [](double frequency, double phase) {
+        std::vector<float> values(128);
+        for (std::size_t i = 0; i < values.size(); ++i)
+            values[i] = static_cast<float>(std::sin((2.0 * std::numbers::pi * frequency * static_cast<double>(i)) + phase));
+        return values;
+    };
+
+    const auto slow = sine(0.05, 0.3);
+    CHECK(jwaveform::interpolate(slow, 64.0) == Approx(slow[64]).margin(1.0e-6));
+    CHECK(jwaveform::interpolate(slow, 64.5) == Approx(std::sin((2.0 * std::numbers::pi * 0.05 * 64.5) + 0.3)).margin(0.01));
+
+    const auto quarter = sine(0.25, std::numbers::pi / 4.0);
+    CHECK(std::abs(quarter[64]) == Approx(std::sqrt(0.5)).margin(1.0e-6));
+    CHECK(std::abs(jwaveform::interpolate(quarter, 64.5)) == Approx(1.0).margin(0.02));
+
+    const std::vector<float> lone{ 1.0f };
+    CHECK(jwaveform::interpolate(lone, 0.0) == 1.0f);
+    CHECK(jwaveform::interpolate(lone, 0.5) == Approx(static_cast<float>(jwaveform::interpolationKernel(0.5))));
+    CHECK(jwaveform::interpolate(lone, std::nan("")) == 0.0f);
 }

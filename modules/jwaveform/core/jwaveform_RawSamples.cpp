@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <numbers>
 
 namespace jwaveform
 {
@@ -65,6 +66,31 @@ float RawSamples::get(int channel, SamplePosition position) const
     return block->getChannel(channel)[static_cast<std::size_t>(position - block->getStart())];
 }
 
+double interpolationKernel(double offset)
+{
+    const auto distance = std::abs(offset);
+    if (distance < 1.0e-9)
+        return 1.0;
+    constexpr auto radius = static_cast<double>(interpolationRadius);
+    if (distance >= radius)
+        return 0.0;
+    const auto x = std::numbers::pi * distance;
+    return radius * std::sin(x) * std::sin(x / radius) / (x * x);
+}
+
+float interpolate(std::span<const float> samples, double index)
+{
+    if (!std::isfinite(index))
+        return 0.0f;
+    const auto base = static_cast<std::int64_t>(std::floor(index));
+    const auto size = static_cast<std::int64_t>(samples.size());
+    auto sum = 0.0;
+    for (auto k = base - interpolationRadius + 1; k <= base + interpolationRadius; ++k)
+        if (k >= 0 && k < size)
+            sum += static_cast<double>(samples[static_cast<std::size_t>(k)]) * interpolationKernel(index - static_cast<double>(k));
+    return static_cast<float>(sum);
+}
+
 bool usesRawSamples(const PeakData& data, double samplesPerPhysicalPixel)
 {
     return samplesPerPhysicalPixel < static_cast<double>(data.getLevels().getSamplesPerPeak());
@@ -74,7 +100,7 @@ SampleRange rawRangeFor(double sourceStart, double sourceEnd)
 {
     if (!std::isfinite(sourceStart) || !std::isfinite(sourceEnd) || !(sourceEnd > sourceStart))
         return {};
-    return { .start = static_cast<SamplePosition>(std::floor(sourceStart)) - 1, .end = static_cast<SamplePosition>(std::ceil(sourceEnd)) + 1 };
+    return { .start = static_cast<SamplePosition>(std::floor(sourceStart)) - interpolationRadius - 1, .end = static_cast<SamplePosition>(std::ceil(sourceEnd)) + interpolationRadius + 1 };
 }
 
 void computeRawColumns(const RawSamples& samples, int channel, SamplePosition sourceLength, double sourceStart, double samplesPerColumn, std::span<ColumnPeak> columns)

@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <numbers>
 #include <vector>
 
 using jwaveform::PeakData;
@@ -207,6 +208,24 @@ TEST_CASE("Waveform drawing draws a line with dots through wide samples", "[draw
     const auto closer = renderSpan(*data, 0.0, 50.0, constantSamples(0.5f, 6400));
     CHECK(painted(closer, 50, 25));
     CHECK_FALSE(painted(closer, 51, 23));
+}
+
+TEST_CASE("Waveform drawing shows peaks between samples", "[drawing][samples]")
+{
+    const auto data = squareData(0.9f, 1);
+    auto block = std::make_shared<jwaveform::SampleBlock>(0, 1, 6400);
+    const auto values = block->getChannel(0);
+    for (std::size_t i = 0; i < values.size(); ++i)
+        values[i] = static_cast<float>(0.5 * std::sin((std::numbers::pi / 2.0 * static_cast<double>(i)) + (std::numbers::pi / 4.0)));
+    const jwaveform::RawSamples samples{ 1, { std::move(block) } };
+    const auto image = renderSpan(*data, 3200.0, 3210.0, samples);
+    auto top = 100;
+    for (auto x = 0; x < 100; ++x)
+        for (auto y = 0; y < 100; ++y)
+            if (painted(image, x, y))
+                top = std::min(top, y);
+    CHECK(top <= 26);
+    CHECK(top >= 23);
 }
 
 TEST_CASE("WaveformView fetches raw samples when zoomed past the peaks", "[view][samples]")

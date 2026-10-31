@@ -22,41 +22,83 @@ struct SampleLine
     juce::Rectangle<float> area;
     double sourceStart = 0.0;
     double pixelsPerSample = 1.0;
+    double pixelScale = 1.0;
     double centre = 0.0;
     double half = 0.0;
     SampleRange positions;
+    SamplePosition sourceLength = 0;
 };
 
 void drawSampleLine(const juce::Graphics& g, const RawSamples& samples, int channel, const SampleLine& line, const WaveformStyle& style)
 {
-    const auto dots = line.pixelsPerSample >= static_cast<double>(style.sampleDotSpacing);
-    const auto radius = style.sampleDotDiameter / 2.0f;
+    const auto window = SampleRange{ .start = line.positions.start - interpolationRadius, .end = line.positions.end + interpolationRadius };
+    const auto size = static_cast<std::size_t>(window.length());
+    std::vector<float> values(size);
+    std::vector<std::size_t> missingBefore(size + 1);
+    for (std::size_t i = 0; i < size; ++i)
+    {
+        const auto position = window.start + static_cast<SamplePosition>(i);
+        const auto inSource = position >= 0 && position < line.sourceLength;
+        const auto held = !inSource || samples.contains(position);
+        values[i] = inSource && held ? samples.get(channel, position) : 0.0f;
+        missingBefore[i + 1] = missingBefore[i] + (held ? 0 : 1);
+    }
+    const auto heldBetween = [&](SamplePosition first, SamplePosition last) {
+        const auto from = static_cast<std::size_t>(std::clamp<SamplePosition>(first - window.start, 0, static_cast<SamplePosition>(size)));
+        const auto to = static_cast<std::size_t>(std::clamp<SamplePosition>(last + 1 - window.start, 0, static_cast<SamplePosition>(size)));
+        return missingBefore[to] == missingBefore[from];
+    };
+
+    const auto pointsPerSample = std::clamp(static_cast<int>(std::ceil(line.pixelsPerSample * line.pixelScale)), 1, 64);
+    const auto point = [&](double index) {
+        const auto centreSample = index + 0.5;
+        const auto gain = style.envelope.gainAt(centreSample) * style.displayScale;
+        const auto value = std::clamp(static_cast<double>(interpolate(values, index - static_cast<double>(window.start))) * gain, -1.0, 1.0);
+        return juce::Point<float>{ static_cast<float>(static_cast<double>(line.area.getX()) + ((centreSample - line.sourceStart) * line.pixelsPerSample)), static_cast<float>(line.centre - (value * line.half)) };
+    };
+
     juce::Path path;
-    juce::Path dotPath;
     auto open = false;
+    const auto add = [&](juce::Point<float> next) {
+        if (open)
+            path.lineTo(next);
+        else
+            path.startNewSubPath(next);
+        open = true;
+    };
+    for (auto position = line.positions.start; position < line.positions.end; ++position)
+    {
+        const auto last = position + 1 >= line.positions.end;
+        if (!last && heldBetween(position - interpolationRadius + 1, position + 1 + interpolationRadius))
+        {
+            for (auto step = 0; step < pointsPerSample; ++step)
+                add(point(static_cast<double>(position) + (static_cast<double>(step) / static_cast<double>(pointsPerSample))));
+        }
+        else
+        {
+            if (open && heldBetween(position, position))
+                add(point(static_cast<double>(position)));
+            open = false;
+        }
+    }
+    g.strokePath(path, juce::PathStrokeType{ style.lineThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded });
+
+    if (line.pixelsPerSample < static_cast<double>(style.sampleDotSpacing))
+        return;
+    const auto radius = style.sampleDotDiameter / 2.0f;
+    juce::Path dots;
     for (auto position = line.positions.start; position < line.positions.end; ++position)
     {
         if (!samples.contains(position))
-        {
-            open = false;
             continue;
-        }
         const auto centreSample = static_cast<double>(position) + 0.5;
         const auto gain = style.envelope.gainAt(centreSample) * style.displayScale;
         const auto value = std::clamp(static_cast<double>(samples.get(channel, position)) * gain, -1.0, 1.0);
         const auto x = static_cast<float>(static_cast<double>(line.area.getX()) + ((centreSample - line.sourceStart) * line.pixelsPerSample));
         const auto y = static_cast<float>(line.centre - (value * line.half));
-        if (open)
-            path.lineTo(x, y);
-        else
-            path.startNewSubPath(x, y);
-        open = true;
-        if (dots)
-            dotPath.addEllipse(x - radius, y - radius, style.sampleDotDiameter, style.sampleDotDiameter);
+        dots.addEllipse(x - radius, y - radius, style.sampleDotDiameter, style.sampleDotDiameter);
     }
-    g.strokePath(path, juce::PathStrokeType{ style.lineThickness, juce::PathStrokeType::curved, juce::PathStrokeType::rounded });
-    if (dots)
-        g.fillPath(dotPath);
+    g.fillPath(dots);
 }
 
 }
@@ -121,7 +163,8 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
             {
                 const auto from = firstSample + (static_cast<double>(x) * samplesPerColumn);
                 const auto start = static_cast<SamplePosition>(std::floor(from));
-                if (samples.contains(SampleRange{ .start = start, .end = std::max(start + 1, static_cast<SamplePosition>(std::ceil(from + samplesPerColumn))) }))
+                const auto end = std::max(start + 1, static_cast<SamplePosition>(std::ceil(from + samplesPerColumn)));
+                if (samples.contains(SampleRange{ .start = start - interpolationRadius, .end = end + interpolationRadius }.intersection({ .start = 0, .end = data.getLength() })))
                     columns[x].valid = false;
             }
         }
@@ -147,7 +190,7 @@ void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData
 
         if (asLine)
         {
-            const SampleLine line{ .area = area, .sourceStart = sourceStart, .pixelsPerSample = 1.0 / samplesPerPixel, .centre = centre, .half = half, .positions = linePositions };
+            const SampleLine line{ .area = area, .sourceStart = sourceStart, .pixelsPerSample = 1.0 / samplesPerPixel, .pixelScale = pixelScale, .centre = centre, .half = half, .positions = linePositions, .sourceLength = data.getLength() };
             const auto firstChannel = channel == allChannels ? 0 : channel;
             const auto endChannel = channel == allChannels ? data.getNumChannels() : channel + 1;
             for (auto c = firstChannel; c < endChannel; ++c)

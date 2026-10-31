@@ -30,8 +30,9 @@ struct WaveformStyle
 
     When a physical pixel shows fewer source samples than a level-0 peak covers, raw samples are
     used where they are held: each column then spans the samples it overlaps, and once a sample is
-    wider than a physical pixel the waveform is drawn as a line through the samples' centres, with
-    a dot per sample when they are at least style.sampleDotSpacing apart. Elsewhere level 0 is
+    wider than a physical pixel the waveform is drawn as the band-limited curve through the
+    samples' centres (interpolate()), with a dot on each sample's value when they are at least
+    style.sampleDotSpacing apart. Elsewhere level 0 is
     drawn stretched.
 */
 void drawWaveform(juce::Graphics& g, juce::Rectangle<float> area, const PeakData& data, double sourceStart, double sourceEnd, const WaveformStyle& style, const RawSamples& samples = {});
